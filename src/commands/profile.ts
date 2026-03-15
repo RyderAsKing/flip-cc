@@ -327,15 +327,14 @@ export async function profileEditCommand(id?: string): Promise<void> {
   const newApiKey = await password({
     message: `API key (current: ${currentKeyHint}, leave blank to keep):`,
     mask: '*',
+    validate: (value) => {
+      if (!value || value.trim().length === 0) return true; // blank = keep existing
+      return validateApiKey(value, profile.provider);
+    },
   });
 
   let apiKey = profile.apiKey;
   if (newApiKey && newApiKey.trim().length > 0) {
-    const validation = validateApiKey(newApiKey, profile.provider);
-    if (validation !== true) {
-      console.error(chalk.red(`Error: ${validation}`));
-      process.exit(1);
-    }
     apiKey = newApiKey;
   } else if (newApiKey === '' && profile.provider === 'anthropic') {
     // Allow clearing API key for Anthropic (subscription mode)

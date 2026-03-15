@@ -23,15 +23,12 @@ export function validateApiKey(key: string, type: ProviderType): string | true {
       return 'Kimi API key seems too short (minimum 10 characters)';
     }
   } else if (type === 'openrouter') {
-    // OpenRouter keys start with 'sk-or-v1-'
-    if (!key.startsWith('sk-or-v1-')) {
-      return 'OpenRouter API key must start with "sk-or-v1-"';
-    }
-  } else if (type === 'openai-compatible') {
-    // Generic OpenAI-compatible: just check minimum length
+    // OpenRouter keys: minimum 10 characters
     if (key.length < 10) {
       return 'API key seems too short (minimum 10 characters)';
     }
+  } else if (type === 'openai-compatible') {
+    // No format requirements — accept any non-empty key (emptiness checked above)
   }
 
   return true;

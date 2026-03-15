@@ -17,10 +17,10 @@ export interface LaunchOptions {
  * Creates an isolated home directory for API key mode that excludes claude.ai credentials.
  * This prevents the auth conflict warning when using API key mode.
  */
-function createIsolatedHomeForApiKey(): string {
+function createIsolatedHomeForApiKey(apiKey: string): string {
   const realHome = process.env.HOME || process.env.USERPROFILE || tmpdir();
   const tempHome = mkdtempSync(join(tmpdir(), 'flip-cc-apikey-'));
-  
+
   // Create ~/.local/bin to suppress PATH warnings
   const localBinDir = join(tempHome, '.local', 'bin');
   mkdirSync(localBinDir, { recursive: true });
@@ -50,14 +50,33 @@ function createIsolatedHomeForApiKey(): string {
     // Ignore other symlink errors (e.g., if already exists)
   }
 
-  // Copy main config file if it exists (excludes credentials)
+  // Copy main config file and pre-approve the API key so Claude Code skips
+  // the "Detected a custom API key in your environment" interactive prompt.
+  // Claude Code tracks approved keys in ~/.claude.json under customApiKeyResponses.approved.
   const mainConfigFile = join(realHome, '.claude.json');
+  const tempMainConfigFile = join(tempHome, '.claude.json');
   if (existsSync(mainConfigFile)) {
     try {
-      cpSync(mainConfigFile, join(tempHome, '.claude.json'), { force: true });
+      cpSync(mainConfigFile, tempMainConfigFile, { force: true });
     } catch {
       // Ignore copy errors
     }
+  }
+  // Inject the API key into the approved list (write file whether or not original existed)
+  try {
+    let claudeConfig: Record<string, unknown> = {};
+    if (existsSync(tempMainConfigFile)) {
+      claudeConfig = JSON.parse(readFileSync(tempMainConfigFile, 'utf-8'));
+    }
+    const responses = (claudeConfig.customApiKeyResponses ?? {}) as Record<string, unknown>;
+    const approved = Array.isArray(responses.approved) ? responses.approved as string[] : [];
+    if (!approved.includes(apiKey)) {
+      approved.push(apiKey);
+    }
+    claudeConfig.customApiKeyResponses = { ...responses, approved };
+    writeFileSync(tempMainConfigFile, JSON.stringify(claudeConfig, null, 2));
+  } catch {
+    // Ignore config patching errors — worst case the dialog appears
   }
   
   // Create .claude directory structure
@@ -151,9 +170,8 @@ function buildEnvOverrides(profile: Profile, options: LaunchOptions): Record<str
     }
   } else {
     // Non-Anthropic providers: always use API key with Anthropic-compatible env vars
-    if (profile.apiKey) {
-      envOverrides['ANTHROPIC_API_KEY'] = profile.apiKey;
-    }
+    // First clear any existing ANTHROPIC_API_KEY from parent environment to avoid conflicts
+    envOverrides['ANTHROPIC_API_KEY'] = profile.apiKey || undefined;
 
     // Set base URL for non-Anthropic providers
     if (profile.baseUrl) {
@@ -239,7 +257,7 @@ export async function launchCommand(profileId: string, options: LaunchOptions): 
   let isolatedHome: string | undefined;
 
   if (useIsolatedHome) {
-    isolatedHome = createIsolatedHomeForApiKey();
+    isolatedHome = createIsolatedHomeForApiKey(profile.apiKey);
     envOverrides['HOME'] = isolatedHome;
 
     // Add ~/.local/bin to PATH to suppress warnings

@@ -247,7 +247,7 @@ async function configureOpenAICompatible(): Promise<{ profileId: string; profile
   const apiKey = await password({
     message: 'Enter your API key:',
     mask: '*',
-    validate: (value) => value.length > 0 || 'API key is required',
+    validate: (value) => validateApiKey(value, 'openai-compatible'),
   });
 
   const profileId = await input({
@@ -324,6 +324,8 @@ export async function setupCommand(): Promise<void> {
         console.log(chalk.yellow('Setup cancelled.'));
         return;
       }
+      // Actually clear existing profiles so re-setup starts fresh
+      setConfig({ profiles: [] });
     }
   }
 
