@@ -2,7 +2,7 @@
 
 import { Command } from 'commander';
 import chalk from 'chalk';
-import { setupCommand } from './commands/setup.js';
+import { setupCommand } from './commands/setup/index.js';
 import { launchCommand } from './commands/launch.js';
 import { vscodeShimCommand } from './commands/vscode-config.js';
 import {

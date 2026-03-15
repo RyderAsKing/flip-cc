@@ -33,6 +33,15 @@ export function spawnWithInheritance(
 
     const isWindows = process.platform === 'win32';
 
+    // SECURITY NOTE: `shell: true` on Windows is required because Node/Bun's
+    // spawn cannot locate executables that are installed as CMD scripts (e.g.
+    // the `claude` npm global shim on Windows is a .cmd file, not a real
+    // binary).  This means the shell will interpret any metacharacters that
+    // appear in `command` or `args`.  The command here is the hard-coded
+    // string "claude" and args are always an empty array, so there is no
+    // user-controlled input that can reach the shell interpreter.  Never pass
+    // user-supplied strings as the command or in args when shell mode is
+    // active.
     const spawnOptions: Parameters<typeof spawn>[2] = {
       stdio: 'inherit',
       env,

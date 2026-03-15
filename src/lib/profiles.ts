@@ -143,6 +143,8 @@ export function getProviderBaseUrl(provider: ProviderType): string | undefined {
       return 'https://api.kimi.com/coding/';
     case 'openrouter':
       return 'https://openrouter.ai/api/v1';
+    case 'openai-compatible':
+      return undefined; // user always provides their own base URL
     default:
       return undefined;
   }

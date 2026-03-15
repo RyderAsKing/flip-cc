@@ -12,31 +12,8 @@ import {
   createProfile,
 } from '../lib/profiles.js';
 import { validateApiKey } from '../lib/validate.js';
-
-/**
- * Mask an API key for display (show only last 4 characters).
- */
-function maskApiKey(key: string): string {
-  if (!key || key.length === 0) return chalk.gray('(none)');
-  if (key.length <= 4) return '****';
-  return chalk.gray('****') + key.slice(-4);
-}
-
-/**
- * Get provider display name.
- */
-function getProviderDisplay(provider: ProviderType): string {
-  switch (provider) {
-    case 'anthropic':
-      return chalk.blue('Anthropic');
-    case 'kimi':
-      return chalk.magenta('Moonshot Kimi');
-    case 'openrouter':
-      return chalk.green('OpenRouter');
-    default:
-      return provider;
-  }
-}
+import { getConfig } from '../lib/config.js';
+import { maskApiKey, getProviderDisplay } from '../lib/utils.js';
 
 /**
  * List all profiles.
@@ -105,6 +82,11 @@ export async function profileAddCommand(): Promise<void> {
         value: 'openrouter',
         description: 'Access multiple models through OpenRouter',
       },
+      {
+        name: 'OpenAI-Compatible',
+        value: 'openai-compatible',
+        description: 'Any provider with an OpenAI-compatible API (NVIDIA NIM, Groq, Together AI, Ollama…)',
+      },
     ],
   });
 
@@ -159,8 +141,31 @@ export async function profileAddCommand(): Promise<void> {
         validate: (value) => validateApiKey(value, 'anthropic'),
       });
     }
+  } else if (provider === 'openai-compatible') {
+    apiKey = await password({
+      message: 'Enter your API key:',
+      mask: '*',
+      validate: (value) => validateApiKey(value, provider),
+    });
+
+    baseUrl = await input({
+      message: 'Base URL (e.g. https://api.groq.com/openai/v1):',
+      validate: (value) => {
+        if (!value || value.trim().length === 0) return 'Base URL is required';
+        if (!value.startsWith('http')) return 'Base URL must start with http:// or https://';
+        return true;
+      },
+    });
+
+    model = await input({
+      message: 'Model name (e.g. llama-3.1-70b-versatile):',
+      validate: (value) => {
+        if (!value || value.trim().length === 0) return 'Model name is required';
+        return true;
+      },
+    });
   } else {
-    // All other providers require API key
+    // kimi / openrouter
     apiKey = await password({
       message: `Enter your ${provider === 'kimi' ? 'Kimi' : 'OpenRouter'} key:`,
       mask: '*',
@@ -224,8 +229,14 @@ export async function profileAddCommand(): Promise<void> {
       });
       const envValue = await input({
         message: `Value for ${envKey}:`,
+        validate: (value) => {
+          if (Buffer.byteLength(value.replace(/\0/g, ''), 'utf8') > 4096) {
+            return 'Value must not exceed 4096 bytes';
+          }
+          return true;
+        },
       });
-      extraEnv[envKey] = envValue;
+      extraEnv[envKey] = envValue.replace(/\0/g, '');
 
       addMore = await confirm({
         message: 'Add another environment variable?',
@@ -451,15 +462,11 @@ export async function profileSetDefaultCommand(id?: string): Promise<void> {
 // Helper to get default profile
 function getDefaultProfile(): Profile | undefined {
   const profiles = getProfiles();
-  const config = { defaultProfile: undefined as string | undefined };
-
-  // Import at function level to avoid circular dependency
-  const { getConfig } = require('../lib/config.js');
   const fullConfig = getConfig();
-  config.defaultProfile = fullConfig.defaultProfile;
+  const defaultProfileId = fullConfig.defaultProfile;
 
-  if (config.defaultProfile) {
-    return profiles.find((p) => p.id === config.defaultProfile);
+  if (defaultProfileId) {
+    return profiles.find((p) => p.id === defaultProfileId);
   }
   return profiles[0];
 }

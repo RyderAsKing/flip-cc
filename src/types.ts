@@ -4,7 +4,8 @@ export type LaunchTarget = 'claude' | 'kimi';
 export type ProviderType =
   | 'anthropic'
   | 'kimi'
-  | 'openrouter';
+  | 'openrouter'
+  | 'openai-compatible';
 
 export interface Profile {
   id: string;
