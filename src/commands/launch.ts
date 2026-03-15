@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, cpSync, existsSync, rmSync, symlinkSync } from 'fs';
+import { mkdtempSync, mkdirSync, cpSync, existsSync, rmSync, symlinkSync, readdirSync, readFileSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { execSync } from 'child_process';
@@ -32,8 +32,21 @@ function createIsolatedHomeForApiKey(): string {
       const tempClaudePath = join(localBinDir, 'claude');
       symlinkSync(realClaudePath, tempClaudePath);
     }
-  } catch {
-    // Ignore symlink errors (e.g., if claude not found or already exists)
+  } catch (error) {
+    // Check if claude is not found vs other errors
+    const isNotFoundError =
+      error instanceof Error &&
+      (error.message.includes('command not found') ||
+        error.message.includes('exit code 1'));
+
+    if (isNotFoundError) {
+      console.warn(
+        chalk.yellow('Warning:') +
+          ' Could not find claude binary in PATH. ' +
+          'Make sure claude-code is installed globally (npm install -g @anthropic-ai/claude-code)'
+      );
+    }
+    // Ignore other symlink errors (e.g., if already exists)
   }
 
   // Copy main config file if it exists (excludes credentials)
@@ -54,7 +67,7 @@ function createIsolatedHomeForApiKey(): string {
     mkdirSync(tempClaudeDir, { recursive: true });
     
     // Copy all files/directories except credentials file
-    const entries = require('fs').readdirSync(realClaudeDir, { withFileTypes: true });
+    const entries = readdirSync(realClaudeDir, { withFileTypes: true });
     for (const entry of entries) {
       const srcPath = join(realClaudeDir, entry.name);
       const destPath = join(tempClaudeDir, entry.name);
@@ -79,7 +92,7 @@ function createIsolatedHomeForApiKey(): string {
     const credsFile = join(realClaudeDir, '.credentials.json');
     if (existsSync(credsFile)) {
       try {
-        const credsContent = require('fs').readFileSync(credsFile, 'utf-8');
+        const credsContent = readFileSync(credsFile, 'utf-8');
         const creds = JSON.parse(credsContent);
         // Create minimal credentials file with only MCP OAuth
         const filteredCreds: Record<string, unknown> = {};
@@ -91,7 +104,7 @@ function createIsolatedHomeForApiKey(): string {
           filteredCreds.organizationUuid = creds.organizationUuid;
         }
         if (Object.keys(filteredCreds).length > 0) {
-          require('fs').writeFileSync(
+          writeFileSync(
             join(tempClaudeDir, '.credentials.json'),
             JSON.stringify(filteredCreds, null, 2)
           );

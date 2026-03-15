@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "type": "module",
   "bin": {
-    "flip-cc": "./dist/flip-cc"
+    "flip-cc": "dist/flip-cc"
   },
   "scripts": {
     "dev": "bun run src/index.ts",

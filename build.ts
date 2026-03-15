@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 import { $ } from 'bun';
-import { existsSync, mkdirSync } from 'fs';
+import { existsSync, mkdirSync, copyFileSync, chmodSync } from 'fs';
 import { resolve } from 'path';
 
 interface BuildTarget {
@@ -44,6 +44,36 @@ for (const t of targets) {
 
 console.log('\n' + (hasError ? 'Build completed with errors.' : 'All builds completed successfully!'));
 console.log(`Output directory: ${distDir}`);
+
+// Create platform-specific symlink/binary for current platform
+if (!hasError) {
+  const currentPlatform = process.platform;
+  const currentArch = process.arch;
+
+  const currentTarget = targets.find(
+    (t) => t.platform === currentPlatform && t.arch === currentArch
+  );
+
+  if (currentTarget) {
+    const sourceFile = resolve(distDir, currentTarget.outfile);
+    const isWindows = currentPlatform === 'win32';
+    const destName = isWindows ? 'flip-cc.exe' : 'flip-cc';
+    const destFile = resolve(distDir, destName);
+
+    try {
+      copyFileSync(sourceFile, destFile);
+      // Make executable on Unix-like systems
+      if (!isWindows) {
+        chmodSync(destFile, 0o755);
+      }
+      console.log(`\n✓ Created ${destName} for current platform (${currentPlatform}-${currentArch})`);
+    } catch (error) {
+      console.error(`\n✗ Failed to create ${destName}:`, error);
+    }
+  } else {
+    console.log(`\nNote: No prebuilt binary for current platform (${currentPlatform}-${currentArch})`);
+  }
+}
 
 if (hasError) {
   process.exit(1);

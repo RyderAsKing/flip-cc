@@ -39,4 +39,7 @@ program
   });
 
 // Parse arguments
-program.parseAsync(process.argv);
+program.parseAsync(process.argv).catch((error) => {
+  console.error(chalk.red('Unexpected error:'), error instanceof Error ? error.message : error);
+  process.exit(1);
+});

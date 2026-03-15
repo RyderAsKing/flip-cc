@@ -12,9 +12,9 @@ export function validateApiKey(key: string, type: 'anthropic' | 'kimi'): string 
   }
 
   if (type === 'anthropic') {
-    // Anthropic keys start with 'sk-ant-'
-    if (!key.startsWith('sk-ant-')) {
-      return 'Anthropic API key must start with "sk-ant-"';
+    // Anthropic keys start with 'sk-ant' (e.g., 'sk-ant-', 'sk-ant-api03-')
+    if (!key.startsWith('sk-ant')) {
+      return 'Anthropic API key must start with "sk-ant"';
     }
   } else if (type === 'kimi') {
     // Kimi keys: non-empty with minimum length (at least 10 chars)
