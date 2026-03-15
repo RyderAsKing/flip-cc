@@ -10,6 +10,7 @@ This document provides a comprehensive overview of the `flip-cc` implementation,
    - [Configuration Management](#configuration-management)
    - [Environment Isolation](#environment-isolation)
    - [Process Spawning](#process-spawning)
+   - [VSCode Extension Integration](#vscode-extension-integration)
    - [Input Validation](#input-validation)
 4. [Authentication & Auth Conflict Resolution](#authentication--auth-conflict-resolution)
 5. [Launch Modes](#launch-modes)
@@ -41,7 +42,8 @@ flip-cc/
 │   ├── types.ts              # Shared TypeScript types
 │   ├── commands/
 │   │   ├── setup.ts          # Interactive setup wizard
-│   │   └── launch.ts         # Launch logic with environment isolation
+│   │   ├── launch.ts         # Launch logic with environment isolation
+│   │   └── vscode-config.ts  # VSCode extension integration
 │   └── lib/
 │       ├── config.ts         # Conf-based configuration wrapper
 │       ├── spawn.ts          # child_process wrapper with stdio inheritance
@@ -103,10 +105,10 @@ Auth conflict: Both a token (claude.ai) and an API key (ANTHROPIC_API_KEY) are s
 **Function: `createIsolatedHomeForApiKey()`**
 
 Creates a temporary home directory that:
-1. Copies `~/.claude.json` (user settings, theme preferences)
-2. Copies all of `~/.claude/` **except** `.credentials.json`
-3. Selectively copies only `mcpOAuth` from credentials (preserves MCP server auth)
-4. Creates `~/.local/bin` to suppress PATH warnings
+1. Creates `~/.local/bin` and symlinks the real `claude` binary (fixes "installMethod is native, but claude command not found" error)
+2. Copies `~/.claude.json` (user settings, theme preferences)
+3. Copies all of `~/.claude/` **except** `.credentials.json`
+4. Selectively copies only `mcpOAuth` and `organizationUuid` from credentials (preserves MCP server auth)
 5. Updates `PATH` env var to include the isolated bin directory
 
 **Preserved Data:**
@@ -154,6 +156,35 @@ await spawnWithInheritance('claude', [], {
 
 ---
 
+### VSCode Extension Integration (`src/commands/vscode-config.ts`)
+
+Configures the official Claude Code VSCode extension by writing environment variables directly to VSCode's `settings.json`. Unlike the terminal launcher which uses isolated home directories, VSCode configuration relies on the extension's ability to read environment variables from settings.
+
+**Platform-Specific Settings Paths:**
+- macOS: `~/Library/Application Support/Code/User/settings.json`
+- Linux: `~/.config/Code/User/settings.json`
+- Windows: `%APPDATA%/Code/User/settings.json`
+
+**How It Works:**
+
+1. **Line-Based JSON Manipulation** - Uses careful line-based parsing to insert/remove only flip-cc managed keys without rewriting the entire file
+2. **Backup Creation** - Always backs up original to `settings.json.flip-cc.bak` before modification
+3. **Legacy Shim Removal** - Cleans up any old PATH-based shims from previous flip-cc versions
+
+**Configuration Modes:**
+
+| Mode | VSCode Setting | Value |
+|------|----------------|-------|
+| `kimi` | `claudeCode.environmentVariables` | `ANTHROPIC_BASE_URL`, `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`, `ENABLE_TOOL_SEARCH` |
+| `claude-key` | `claudeCode.environmentVariables` | `ANTHROPIC_API_KEY` |
+| `claude-subscription` | `claudeCode.environmentVariables` | `CLAUDE_CODE_MAX_THINKING_TOKENS=0` (prevents thinking block errors) |
+
+All API key modes also set `claudeCode.disableLoginPrompt: true`.
+
+**Removal:** The `--remove` flag strips `claudeCode.environmentVariables` and `claudeCode.disableLoginPrompt` from settings.json using line-based removal that preserves all other user settings.
+
+---
+
 ### Input Validation (`src/lib/validate.ts`)
 
 Pure validation functions with no dependencies:
@@ -184,6 +215,8 @@ Pure validation functions with no dependencies:
 ANTHROPIC_API_KEY=undefined  # Deleted from env
 ```
 
+**VSCode Alternative:** Use `flip-cc vscode-config` and select "Claude (Subscription)" to configure the VSCode extension to use subscription auth. This sets `CLAUDE_CODE_MAX_THINKING_TOKENS=0` to prevent "Invalid signature in thinking block" errors that can occur when mixing subscription auth with certain Claude Code features.
+
 ### API Key Mode (`flip-cc launch claude --key`)
 
 **Goal:** Use saved Anthropic API key, bypass subscription
@@ -198,7 +231,10 @@ ANTHROPIC_API_KEY=undefined  # Deleted from env
 ANTHROPIC_API_KEY=<saved-key>
 HOME=/tmp/flip-cc-apikey-xxx
 PATH=/tmp/flip-cc-apikey-xxx/.local/bin:$PATH
+USERPROFILE=/tmp/flip-cc-apikey-xxx  # Windows only
 ```
+
+**VSCode Alternative:** Use `flip-cc vscode-config` and select "Claude (API Key)" to configure the VSCode extension to use your saved Anthropic API key.
 
 ### Kimi Mode (`flip-cc launch kimi`)
 
@@ -214,12 +250,16 @@ PATH=/tmp/flip-cc-apikey-xxx/.local/bin:$PATH
 ```bash
 ANTHROPIC_API_KEY=<kimi-key>
 ANTHROPIC_BASE_URL=https://api.kimi.com/coding/
+ANTHROPIC_MODEL=kimi-for-coding
 ENABLE_TOOL_SEARCH=false
 HOME=/tmp/flip-cc-apikey-xxx
 PATH=/tmp/flip-cc-apikey-xxx/.local/bin:$PATH
+USERPROFILE=/tmp/flip-cc-apikey-xxx  # Windows only
 ```
 
 **Note on Model Names:** Kimi's API returns `claude-sonnet-4-6` as the model name for compatibility. This is expected - the actual LLM is Kimi 2.5.
+
+**VSCode Alternative:** Use `flip-cc vscode-config` and select "Moonshot Kimi 2.5" to configure the VSCode extension to use your saved Kimi API key.
 
 ---
 
@@ -228,8 +268,8 @@ PATH=/tmp/flip-cc-apikey-xxx/.local/bin:$PATH
 | Mode | Target | Auth Method | Home Directory | Env Overrides |
 |------|--------|-------------|----------------|---------------|
 | `launch claude` | Anthropic | Subscription | Real `$HOME` | `ANTHROPIC_API_KEY=undefined` |
-| `launch claude --key` | Anthropic | API Key | Isolated temp | `ANTHROPIC_API_KEY=<key>`, `HOME=<temp>` |
-| `launch kimi` | Moonshot | API Key | Isolated temp | `ANTHROPIC_API_KEY=<kimi-key>`, `ANTHROPIC_BASE_URL=<kimi>`, `HOME=<temp>` |
+| `launch claude --key` | Anthropic | API Key | Isolated temp | `ANTHROPIC_API_KEY=<key>`, `HOME=<temp>`, `PATH=<temp>/.local/bin:$PATH`, `USERPROFILE=<temp>` (Windows) |
+| `launch kimi` | Moonshot | API Key | Isolated temp | `ANTHROPIC_API_KEY=<kimi-key>`, `ANTHROPIC_BASE_URL=<kimi>`, `ANTHROPIC_MODEL=kimi-for-coding`, `ENABLE_TOOL_SEARCH=false`, `HOME=<temp>`, `PATH=<temp>/.local/bin:$PATH`, `USERPROFILE=<temp>` (Windows) |
 
 ---
 
