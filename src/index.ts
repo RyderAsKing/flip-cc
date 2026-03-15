@@ -5,13 +5,14 @@ import chalk from 'chalk';
 import { setupCommand } from './commands/setup.js';
 import { launchCommand } from './commands/launch.js';
 import { vscodeShimCommand } from './commands/vscode-config.js';
+import packageJson from '../package.json' with { type: 'json' };
 
 const program = new Command();
 
 program
   .name('flip-cc')
   .description('CLI launcher for Claude Code with Anthropic/Moonshot Kimi switching')
-  .version('0.1.0');
+  .version(packageJson.version);
 
 program
   .command('setup')
