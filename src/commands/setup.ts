@@ -29,11 +29,6 @@ const PROVIDER_CHOICES: { value: ProviderType; name: string; description: string
     name: 'OpenRouter',
     description: 'Access multiple AI models through OpenRouter',
   },
-  {
-    value: 'openai-compatible',
-    name: 'OpenAI-compatible API',
-    description: 'Custom OpenAI-compatible endpoint',
-  },
 ];
 
 /**
@@ -227,76 +222,6 @@ async function configureOpenRouter(): Promise<{ profileId: string; profileName: 
   };
 }
 
-/**
- * Configure OpenAI-compatible provider.
- */
-async function configureOpenAICompatible(): Promise<{ profileId: string; profileName: string; config: unknown } | null> {
-  const baseUrl = await input({
-    message: 'Enter the base URL for your API (e.g., https://api.example.com/v1):',
-    validate: (value) => {
-      if (!value) return 'Base URL is required';
-      try {
-        new URL(value);
-        return true;
-      } catch {
-        return 'Please enter a valid URL';
-      }
-    },
-  });
-
-  const apiKey = await password({
-    message: 'Enter your API key:',
-    mask: '*',
-    validate: (value) => validateApiKey(value, 'openai-compatible'),
-  });
-
-  const profileId = await input({
-    message: 'Profile ID (used in commands):',
-    default: 'custom',
-    validate: (value) => {
-      if (!validateProfileId(value)) {
-        return 'Profile ID must be alphanumeric with dashes or underscores only';
-      }
-      return true;
-    },
-  });
-
-  const profileName = await input({
-    message: 'Profile name (display name):',
-    default: 'Custom API',
-  });
-
-  const model = await input({
-    message: 'Model (optional):',
-    default: '',
-  });
-
-  const extraEnvInput = await input({
-    message: 'Extra environment variables (KEY=value,KEY2=value2) - optional:',
-    default: '',
-  });
-
-  // Parse extra env vars
-  const extraEnv: Record<string, string> = {};
-  if (extraEnvInput) {
-    for (const pair of extraEnvInput.split(',')) {
-      const [key, ...valueParts] = pair.trim().split('=');
-      if (key && valueParts.length > 0) {
-        extraEnv[key] = valueParts.join('=');
-      }
-    }
-  }
-
-  return {
-    profileId,
-    profileName,
-    config: createProfile(profileId, profileName, 'openai-compatible', apiKey, {
-      baseUrl,
-      model: model || undefined,
-      extraEnv: Object.keys(extraEnv).length > 0 ? extraEnv : undefined,
-    }),
-  };
-}
 
 /**
  * Main setup command - guides user through creating initial profiles.
@@ -367,9 +292,6 @@ export async function setupCommand(): Promise<void> {
           break;
         case 'openrouter':
           result = await configureOpenRouter();
-          break;
-        case 'openai-compatible':
-          result = await configureOpenAICompatible();
           break;
       }
 

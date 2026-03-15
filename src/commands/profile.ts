@@ -33,8 +33,6 @@ function getProviderDisplay(provider: ProviderType): string {
       return chalk.magenta('Moonshot Kimi');
     case 'openrouter':
       return chalk.green('OpenRouter');
-    case 'openai-compatible':
-      return chalk.yellow('OpenAI-compatible');
     default:
       return provider;
   }
@@ -107,11 +105,6 @@ export async function profileAddCommand(): Promise<void> {
         value: 'openrouter',
         description: 'Access multiple models through OpenRouter',
       },
-      {
-        name: 'OpenAI-compatible',
-        value: 'openai-compatible',
-        description: 'Custom OpenAI-compatible endpoint',
-      },
     ],
   });
 
@@ -169,27 +162,12 @@ export async function profileAddCommand(): Promise<void> {
   } else {
     // All other providers require API key
     apiKey = await password({
-      message: `Enter your ${provider === 'kimi' ? 'Kimi' : provider === 'openrouter' ? 'OpenRouter' : 'API'} key:`,
+      message: `Enter your ${provider === 'kimi' ? 'Kimi' : 'OpenRouter'} key:`,
       mask: '*',
       validate: (value) => validateApiKey(value, provider),
     });
   }
 
-  // Base URL (for custom endpoints)
-  if (provider === 'openai-compatible') {
-    baseUrl = await input({
-      message: 'Base URL (e.g., https://api.example.com/v1):',
-      validate: (value) => {
-        if (!value || value.trim().length === 0) {
-          return 'Base URL is required for OpenAI-compatible providers';
-        }
-        if (!value.startsWith('http')) {
-          return 'Base URL must start with http:// or https://';
-        }
-        return true;
-      },
-    });
-  }
 
   // Model selection
   if (provider === 'openrouter') {
@@ -219,13 +197,6 @@ export async function profileAddCommand(): Promise<void> {
           return true;
         },
       });
-    }
-  } else if (provider === 'openai-compatible') {
-    model = await input({
-      message: 'Model identifier (optional):',
-    });
-    if (!model || model.trim().length === 0) {
-      model = undefined;
     }
   }
 

@@ -226,8 +226,6 @@ function getProviderDisplay(provider: string): string {
       return chalk.magenta('Moonshot Kimi');
     case 'openrouter':
       return chalk.green('OpenRouter');
-    case 'openai-compatible':
-      return chalk.yellow('OpenAI-compatible');
     default:
       return provider;
   }

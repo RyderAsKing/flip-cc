@@ -4,7 +4,7 @@ import { getProfile, getDefaultProfileId } from './profiles.js';
 /**
  * Validates an API key format.
  * @param key - The API key to validate
- * @param type - The type of API key ('anthropic', 'kimi', 'openrouter', or 'openai-compatible')
+ * @param type - The type of API key ('anthropic', 'kimi', or 'openrouter')
  * @returns Error string if invalid, true if valid
  */
 export function validateApiKey(key: string, type: ProviderType): string | true {
@@ -27,8 +27,6 @@ export function validateApiKey(key: string, type: ProviderType): string | true {
     if (key.length < 10) {
       return 'API key seems too short (minimum 10 characters)';
     }
-  } else if (type === 'openai-compatible') {
-    // No format requirements — accept any non-empty key (emptiness checked above)
   }
 
   return true;
