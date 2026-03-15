@@ -55,16 +55,39 @@ This allows you to use API key modes without conflicts while keeping your MCP se
 
 ### Installation
 
-Download the latest pre-compiled binary for your operating system from the Releases page, or install via our quick script:
-
-**macOS / Linux:**
+Download the latest pre-compiled binary for your operating system from the [Releases page](https://github.com/RyderAsKing/flip-cc/releases), or install via our quick script:
 
 ```bash
-curl -fsSL https://flip-cc.com/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/RyderAsKing/flip-cc/main/install.sh | bash
+```
+
+Or with sudo if required:
+```bash
+curl -fsSL https://raw.githubusercontent.com/RyderAsKing/flip-cc/main/install.sh | sudo bash
 ```
 
 **Windows:**
-Download `flip-cc.exe` and add it to your system PATH.
+Windows users can run flip-cc via [WSL](https://learn.microsoft.com/en-us/windows/wsl/install) (Windows Subsystem for Linux). Install WSL, then run the Linux installation command above in your WSL terminal.
+
+**Manual Installation:**
+1. Download the appropriate binary for your platform from the [latest release](https://github.com/RyderAsKing/flip-cc/releases/latest)
+2. Rename it to `flip-cc`
+3. Move it to a directory in your PATH (e.g., `/usr/local/bin`, `$HOME/.local/bin`)
+4. Make it executable: `chmod +x flip-cc`
+
+### Uninstallation
+
+To remove flip-cc (Claude Code will remain unaffected):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/RyderAsKing/flip-cc/main/uninstall.sh | bash
+```
+
+This removes:
+- The `flip-cc` binary
+- flip-cc's configuration directory (API keys stored by flip-cc)
+
+Your Claude Code installation, settings, and MCP servers remain completely untouched.
 
 ### Quick Usage
 

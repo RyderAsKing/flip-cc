@@ -15,7 +15,6 @@ const targets: BuildTarget[] = [
   { platform: 'linux', arch: 'x64', target: 'bun-linux-x64', outfile: 'flip-cc-linux-x64' },
   { platform: 'darwin', arch: 'x64', target: 'bun-darwin-x64', outfile: 'flip-cc-macos-x64' },
   { platform: 'darwin', arch: 'arm64', target: 'bun-darwin-arm64', outfile: 'flip-cc-macos-arm64' },
-  { platform: 'windows', arch: 'x64', target: 'bun-windows-x64', outfile: 'flip-cc-windows-x64.exe' },
 ];
 
 const distDir = resolve(import.meta.dir, 'dist');
