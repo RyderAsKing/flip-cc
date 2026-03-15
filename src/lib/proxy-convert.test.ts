@@ -5,9 +5,10 @@ import {
   openAIStreamChunkToAnthropic,
   createStreamState,
   type AnthropicRequest,
+  type AnthropicEvent,
   type OpenAIResponse,
   type OpenAIStreamChunk,
-} from './proxy-convert';
+} from './proxy-convert.js';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -88,7 +89,7 @@ describe('anthropicToOpenAI', () => {
       messages: [{ role: 'user', content: 'Hello' }],
     };
     const result = anthropicToOpenAI(req);
-    expect(result.messages.every((m) => m.role !== 'system')).toBe(true);
+    expect(result.messages.every((m: { role: string }) => m.role !== 'system')).toBe(true);
   });
 
   it('converts text-only content blocks to a plain string', () => {
@@ -105,7 +106,7 @@ describe('anthropicToOpenAI', () => {
       ],
     };
     const result = anthropicToOpenAI(req);
-    expect(result.messages[0].content).toBe('Hello world');
+    expect(result.messages[0]!.content).toBe('Hello world');
   });
 
   it('converts image blocks to image_url array content', () => {
@@ -125,7 +126,7 @@ describe('anthropicToOpenAI', () => {
       ],
     };
     const result = anthropicToOpenAI(req);
-    const content = result.messages[0].content as Array<{ type: string; [k: string]: unknown }>;
+    const content = result.messages[0]!.content as unknown as Array<{ type: string; [k: string]: unknown }>;
     expect(Array.isArray(content)).toBe(true);
     expect(content[0]).toEqual({ type: 'text', text: 'Describe this:' });
     expect(content[1]).toEqual({
@@ -153,7 +154,7 @@ describe('anthropicToOpenAI', () => {
       ],
     };
     const result = anthropicToOpenAI(req);
-    const msg = result.messages[0];
+    const msg = result.messages[0]!;
     expect(msg.role).toBe('assistant');
     expect(msg.content).toBe('Let me look that up.');
     expect(msg.tool_calls).toHaveLength(1);
@@ -212,8 +213,8 @@ describe('anthropicToOpenAI', () => {
       ],
     };
     const result = anthropicToOpenAI(req);
-    expect(result.messages[0].content).toBe('Part A. Part B.');
-    expect(result.messages[0].tool_call_id).toBe('toolu_02');
+    expect(result.messages[0]!.content).toBe('Part A. Part B.');
+    expect(result.messages[0]!.tool_call_id).toBe('toolu_02');
   });
 
   it('converts multiple tool_results to multiple tool messages', () => {
@@ -231,8 +232,8 @@ describe('anthropicToOpenAI', () => {
     };
     const result = anthropicToOpenAI(req);
     expect(result.messages).toHaveLength(2);
-    expect(result.messages[0].tool_call_id).toBe('toolu_01');
-    expect(result.messages[1].tool_call_id).toBe('toolu_02');
+    expect(result.messages[0]!.tool_call_id).toBe('toolu_01');
+    expect(result.messages[1]!.tool_call_id).toBe('toolu_02');
   });
 
   it('converts tools array to OpenAI function tools', () => {
@@ -567,8 +568,8 @@ describe('openAIToAnthropic', () => {
     });
     const result = openAIToAnthropic(res, 'model');
     expect(result.content).toHaveLength(2);
-    expect(result.content[0].type).toBe('text');
-    expect(result.content[1].type).toBe('tool_use');
+    expect(result.content[0]!.type).toBe('text');
+    expect(result.content[1]!.type).toBe('tool_use');
   });
 
   it('maps usage tokens correctly', () => {
@@ -627,7 +628,7 @@ describe('openAIStreamChunkToAnthropic', () => {
     const chunk = makeStreamChunk('chatcmpl-1', 'gpt-4o', { content: 'Hi' });
     const events = openAIStreamChunkToAnthropic(chunk, state);
 
-    const types = events.map((e) => e.event);
+    const types = events.map((e: AnthropicEvent) => e.event);
     expect(types).toContain('message_start');
     expect(types).toContain('content_block_start');
     expect(types).toContain('ping');
@@ -651,7 +652,7 @@ describe('openAIStreamChunkToAnthropic', () => {
     openAIStreamChunkToAnthropic(chunk1, state);
     const events2 = openAIStreamChunkToAnthropic(chunk2, state);
 
-    const types2 = events2.map((e) => e.event);
+    const types2 = events2.map((e: AnthropicEvent) => e.event);
     expect(types2).not.toContain('message_start');
     expect(types2).not.toContain('ping');
     expect(types2).toContain('content_block_delta');
@@ -662,7 +663,7 @@ describe('openAIStreamChunkToAnthropic', () => {
     const chunk = makeStreamChunk('id1', 'gpt-4o', { content: 'Hello' });
     const events = openAIStreamChunkToAnthropic(chunk, state);
 
-    const deltaEvent = events.find((e) => e.event === 'content_block_delta');
+    const deltaEvent = events.find((e: AnthropicEvent) => e.event === 'content_block_delta');
     expect(deltaEvent).toBeDefined();
     const data = deltaEvent!.data as { delta: { type: string; text: string } };
     expect(data.delta.type).toBe('text_delta');
@@ -680,12 +681,12 @@ describe('openAIStreamChunkToAnthropic', () => {
     const finalChunk = makeStreamChunk('id1', 'gpt-4o', {}, 'stop');
     const events = openAIStreamChunkToAnthropic(finalChunk, state);
 
-    const types = events.map((e) => e.event);
+    const types = events.map((e: AnthropicEvent) => e.event);
     expect(types).toContain('content_block_stop');
     expect(types).toContain('message_delta');
     expect(types).toContain('message_stop');
 
-    const msgDelta = events.find((e) => e.event === 'message_delta');
+    const msgDelta = events.find((e: AnthropicEvent) => e.event === 'message_delta');
     const data = msgDelta!.data as { delta: { stop_reason: string } };
     expect(data.delta.stop_reason).toBe('end_turn');
   });
@@ -699,7 +700,7 @@ describe('openAIStreamChunkToAnthropic', () => {
     const finalChunk = makeStreamChunk('id1', 'gpt-4o', {}, 'tool_calls');
     const events = openAIStreamChunkToAnthropic(finalChunk, state);
 
-    const msgDelta = events.find((e) => e.event === 'message_delta');
+    const msgDelta = events.find((e: AnthropicEvent) => e.event === 'message_delta');
     const data = msgDelta!.data as { delta: { stop_reason: string } };
     expect(data.delta.stop_reason).toBe('tool_use');
   });
@@ -720,14 +721,14 @@ describe('openAIStreamChunkToAnthropic', () => {
     });
     const events = openAIStreamChunkToAnthropic(toolStartChunk, state);
 
-    const types = events.map((e) => e.event);
+    const types = events.map((e: AnthropicEvent) => e.event);
     // Previous text block should be closed
     expect(types).toContain('content_block_stop');
     // New tool_use block should be opened
     expect(types).toContain('content_block_start');
 
     const cbStart = events.find(
-      (e) =>
+      (e: AnthropicEvent) =>
         e.event === 'content_block_start' &&
         (e.data as { content_block?: { type: string } }).content_block?.type === 'tool_use'
     );
@@ -768,7 +769,7 @@ describe('openAIStreamChunkToAnthropic', () => {
     const acc = state.toolCallAccumulator.get(0);
     expect(acc?.argumentsJson).toBe('{"a":1}');
 
-    const deltaEvent = events.find((e) => e.event === 'content_block_delta');
+    const deltaEvent = events.find((e: AnthropicEvent) => e.event === 'content_block_delta');
     expect(deltaEvent).toBeDefined();
     const data = deltaEvent!.data as { delta: { type: string; partial_json: string } };
     expect(data.delta.type).toBe('input_json_delta');
@@ -797,7 +798,7 @@ describe('openAIStreamChunkToAnthropic', () => {
       state
     );
 
-    const types = events.map((e) => e.event);
+    const types = events.map((e: AnthropicEvent) => e.event);
     expect(types).toContain('content_block_stop');
     expect(types).toContain('content_block_start');
     expect(types).toContain('content_block_delta');
@@ -831,7 +832,7 @@ describe('openAIStreamChunkToAnthropic', () => {
     };
     const events = openAIStreamChunkToAnthropic(chunk, state);
     // Should emit preamble (message_start, content_block_start, ping) but nothing more
-    const types = events.map((e) => e.event);
+    const types = events.map((e: AnthropicEvent) => e.event);
     expect(types).toContain('message_start');
     expect(types).toContain('content_block_start');
     expect(types).toContain('ping');
