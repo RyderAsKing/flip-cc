@@ -89,6 +89,22 @@ This removes:
 
 Your Claude Code installation, settings, and MCP servers remain completely untouched.
 
+### Upgrade
+
+To upgrade to the latest version while preserving your configuration and API keys:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/RyderAsKing/flip-cc/main/upgrade.sh | bash
+```
+
+The upgrade script will:
+1. Back up your existing API keys and configuration
+2. Remove the old binary
+3. Download and install the latest version
+4. Restore your configuration
+
+Your API keys, Kimi settings, and VSCode configuration will be preserved.
+
 ### Quick Usage
 
 1. **One-Time Setup:**
@@ -98,7 +114,7 @@ Your Claude Code installation, settings, and MCP servers remain completely untou
 flip-cc setup
 ```
 
-2. **Launch Claude Code:**
+2. **Launch Claude Code (Terminal):**
    Launch your coding assistant with your backend of choice.
 
 ```bash
@@ -107,7 +123,60 @@ flip-cc launch claude            # Launches via claude.ai subscription (no key n
 flip-cc launch claude --key      # Launches with your saved Anthropic API key
 ```
 
-### Verification
+3. **Use with VSCode Extension (Optional):**
+   Run the interactive setup to configure the Claude Code VSCode extension to use a specific backend.
+
+```bash
+flip-cc vscode-config            # Interactive setup wizard
+```
+
+This will guide you through selecting your preferred backend and write the necessary environment variables directly to your VSCode `settings.json`.
+
+### 🔌 VSCode Extension Integration
+
+`flip-cc vscode-config` configures the official Claude Code VSCode extension to use your chosen backend by writing the appropriate environment variables directly into your VSCode `settings.json`.
+
+### How It Works
+
+1. Run the wizard — it asks which backend you want to use in VSCode.
+2. flip-cc writes `claudeCode.environmentVariables` and `claudeCode.disableLoginPrompt` into your `settings.json`.
+3. Fully restart VSCode — the extension picks up the new settings automatically.
+
+No PATH manipulation, no binary shims. Your existing VSCode settings are preserved.
+
+### Setup
+
+```bash
+flip-cc vscode-config
+```
+
+The wizard will ask which backend to use:
+
+| Mode | Description |
+|------|-------------|
+| `kimi` | Moonshot Kimi 2.5 via your saved Kimi API key |
+| `claude-key` | Claude via your saved Anthropic API key |
+| `claude-subscription` | Claude via your claude.ai Pro/Max subscription |
+
+### Switching Modes
+
+Run the wizard again and select a different backend:
+
+```bash
+flip-cc vscode-config
+```
+
+Then fully restart VSCode (`Ctrl+Shift+P → Quit`, then relaunch).
+
+### Removing the Configuration
+
+```bash
+flip-cc vscode-config --remove
+```
+
+This removes the `claudeCode.environmentVariables` and `claudeCode.disableLoginPrompt` entries from your `settings.json`. A backup is saved as `settings.json.flip-cc.bak` before any change is made.
+
+## Verification
 
 To verify which backend you're using, run `/status` inside Claude Code:
 
@@ -148,7 +217,8 @@ flip-cc/
 │   ├── types.ts              # TypeScript types
 │   ├── commands/
 │   │   ├── setup.ts          # Setup wizard
-│   │   └── launch.ts         # Launch logic with env isolation
+│   │   ├── launch.ts         # Launch logic with env isolation
+│   │   └── vscode-config.ts  # VSCode extension integration
 │   └── lib/
 │       ├── config.ts         # Config storage wrapper
 │       ├── spawn.ts          # Process spawning utilities

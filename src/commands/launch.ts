@@ -149,6 +149,7 @@ export async function launchCommand(target: string, options: LaunchOptions): Pro
     envOverrides['ENABLE_TOOL_SEARCH'] = 'false';
     envOverrides['ANTHROPIC_BASE_URL'] = 'https://api.kimi.com/coding/';
     envOverrides['ANTHROPIC_API_KEY'] = config.kimiApiKey;
+    envOverrides['ANTHROPIC_MODEL'] = 'kimi-for-coding';
 
     // Create isolated home to avoid auth conflict with claude.ai credentials
     isolatedHome = createIsolatedHomeForApiKey();

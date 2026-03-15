@@ -4,6 +4,7 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import { setupCommand } from './commands/setup.js';
 import { launchCommand } from './commands/launch.js';
+import { vscodeShimCommand } from './commands/vscode-config.js';
 
 const program = new Command();
 
@@ -34,6 +35,19 @@ program
       await launchCommand(target, options);
     } catch (error) {
       console.error(chalk.red('Launch failed:'), error instanceof Error ? error.message : error);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('vscode-config')
+  .description('Configure the Claude Code VSCode extension to use a specific backend')
+  .option('--remove', 'Remove the configuration instead of setting it', false)
+  .action(async (options) => {
+    try {
+      await vscodeShimCommand(options);
+    } catch (error) {
+      console.error(chalk.red('vscode-config failed:'), error instanceof Error ? error.message : error);
       process.exit(1);
     }
   });
