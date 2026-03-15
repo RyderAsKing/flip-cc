@@ -1,37 +1,49 @@
 # 🔀 flip-cc
 
-**flip-cc** is a lightweight, secure CLI launcher for Claude Code. It allows developers to seamlessly switch between Anthropic's Claude models and Moonshot's Kimi 2.5 without manually juggling environment variables or API keys.
+**flip-cc** is a lightweight, secure CLI launcher for Claude Code. It enables seamless switching between multiple AI providers—Anthropic Claude, Moonshot Kimi, OpenRouter, and custom OpenAI-compatible endpoints—through a flexible **profile-based** system.
 
-By leveraging Kimi's Anthropic-compatible API endpoints, `flip-cc` acts as a smart wrapper. It securely stores your keys locally and injects the necessary environment overrides on a per-session basis before launching Claude Code.
+By securely storing your API keys and configuration locally, `flip-cc` injects the necessary environment variables on a per-session basis before launching Claude Code. No more manual juggling of environment variables or authentication conflicts.
 
 ## ✨ Key Features
 
-- **Flexible Auth:** Use a claude.ai subscription (Pro/Max) or bring your own Anthropic API key — your choice.
-- **Bring Your Own Key (BYOK):** Retain full control. Supply your own Anthropic and/or Kimi API keys.
+- **Multi-Provider Support:** Switch between Anthropic, Moonshot Kimi, OpenRouter, and custom OpenAI-compatible endpoints.
+- **Profile-Based Configuration:** Create unlimited profiles with different providers, models, and settings.
+- **Flexible Auth:** Use claude.ai subscriptions or API keys—configure per-profile.
+- **Bring Your Own Key (BYOK):** Retain full control. Supply your own API keys for any supported provider.
 - **Secure Local Vault:** Keys are stored securely on your local machine using OS-level configurations. No remote servers, no data collection.
-- **Smart Environment Injection:** Automatically handles the Kimi 2.5 API overrides (`ANTHROPIC_BASE_URL` and `ENABLE_TOOL_SEARCH`) dynamically in the background.
+- **Smart Environment Injection:** Automatically handles API base URLs, models, and provider-specific environment variables.
 - **Auth Conflict Prevention:** Uses isolated home directories to prevent conflicts between claude.ai sessions and API key authentication.
 - **MCP Server Support:** Preserves MCP server connections (like Figma) across all launch modes.
-- **Zero Network Overhead:** Because `flip-cc` is just a launcher and not a proxy server, your API requests go straight to Anthropic or Moonshot with zero added latency.
+- **Zero Network Overhead:** Because `flip-cc` is just a launcher and not a proxy server, your API requests go straight to the provider with zero added latency.
 - **Standalone Executable:** Distributed as a compiled binary. No Node.js environment required to run it.
+- **Automatic Migration:** Seamlessly migrates existing v0.2.x configurations to the new profile system.
 
 ## ⚙️ How it Works
 
-Claude Code supports two authentication modes for the Anthropic side: a **claude.ai subscription** (Pro/Max) or a direct **API key**. Kimi 2.5 always requires a key and offers a fully compatible API structure.
+Claude Code supports two authentication modes for Anthropic: a **claude.ai subscription** (Pro/Max) or a direct **API key**. Other providers like Kimi and OpenRouter always require an API key.
 
-**Subscription mode** (`claude`): No API key needed. `flip-cc` launches `claude` cleanly, letting Claude Code authenticate via your claude.ai login session. Any existing `ANTHROPIC_API_KEY` environment variable is explicitly unset to prevent conflicts.
+**Profile System:** Instead of hardcoded modes, `flip-cc` uses profiles—named configurations that specify:
+- Which provider to use (Anthropic, Kimi, OpenRouter, OpenAI-compatible)
+- Authentication credentials (API key or subscription mode)
+- Model selection (e.g., Claude 3.5 Sonnet, GPT-4, Kimi 2.5)
+- Custom base URLs (for OpenAI-compatible endpoints)
+- Extra environment variables
 
-**API key mode** (`claude --key`): `flip-cc` creates an isolated environment (temp home directory) that excludes your claude.ai session tokens, then injects your saved Anthropic key before spawning the process. This prevents the "Auth conflict" error.
+**Subscription mode** (`anthropic` provider without API key): No API key needed. `flip-cc` launches `claude` cleanly, letting Claude Code authenticate via your claude.ai login session. Any existing `ANTHROPIC_API_KEY` environment variable is explicitly unset to prevent conflicts.
 
-**Kimi mode** (`kimi`): `flip-cc` creates an isolated environment and quietly sets these environment variables:
+**API key mode** (`anthropic` provider with API key, or any other provider): `flip-cc` creates an isolated environment (temp home directory) that excludes your claude.ai session tokens, then injects your saved API key before spawning the process. This prevents the "Auth conflict" error.
 
-```bash
-export ENABLE_TOOL_SEARCH=false
-export ANTHROPIC_BASE_URL=https://api.kimi.com/coding/
-export ANTHROPIC_API_KEY=<your-saved-kimi-key>
-```
+**Provider-specific configuration:** Each profile automatically sets the appropriate environment variables:
 
-...and then immediately spawns the `claude` process. When you close the session, your global system environment remains completely untouched.
+| Provider | Environment Variables Set |
+|----------|---------------------------|
+| **Anthropic (API key)** | `ANTHROPIC_API_KEY=<your-key>` |
+| **Anthropic (Subscription)** | `ANTHROPIC_API_KEY=undefined` (to prevent conflicts) |
+| **Kimi** | `ANTHROPIC_API_KEY=<kimi-key>`, `ANTHROPIC_BASE_URL=https://api.kimi.com/coding/`, `ENABLE_TOOL_SEARCH=false` |
+| **OpenRouter** | `ANTHROPIC_API_KEY=<openrouter-key>`, `ANTHROPIC_BASE_URL=https://openrouter.ai/api/v1`, model routing headers |
+| **OpenAI-compatible** | `ANTHROPIC_API_KEY=<api-key>`, `ANTHROPIC_BASE_URL=<custom-url>`, optional model |
+
+When you close the session, your global system environment remains completely untouched.
 
 ### Authentication Isolation
 
@@ -52,6 +64,8 @@ This allows you to use API key modes without conflicts while keeping your MCP se
 - You must have Anthropic's `claude-code` installed globally.
 - **For Anthropic:** Either a [claude.ai](https://claude.ai) Pro or Max subscription, **or** an [Anthropic API key](https://console.anthropic.com/).
 - **For Kimi:** A [Moonshot AI API key](https://platform.moonshot.cn/).
+- **For OpenRouter:** An [OpenRouter API key](https://openrouter.ai/).
+- **For OpenAI-compatible:** API key and endpoint URL for your provider.
 
 ### Installation
 
@@ -98,47 +112,135 @@ curl -fsSL https://raw.githubusercontent.com/RyderAsKing/flip-cc/main/upgrade.sh
 ```
 
 The upgrade script will:
-1. Back up your existing API keys and configuration
+1. Back up your existing configuration
 2. Remove the old binary
 3. Download and install the latest version
 4. Restore your configuration
 
-Your API keys, Kimi settings, and VSCode configuration will be preserved.
+Your profiles, API keys, and VSCode configuration will be preserved.
 
-### Quick Usage
+### Migration from v0.2.x
 
-1. **One-Time Setup:**
-   Run the setup command. You'll be asked whether you use a claude.ai subscription or an API key for the Anthropic side, and prompted for any keys you want to store.
+If you're upgrading from flip-cc v0.2.x, your existing configuration will be automatically migrated:
+
+- **Old `claude` (subscription)** → New `claude` profile
+- **Old `claude --key`** → New `claude-api` profile (if you had an Anthropic API key)
+- **Old `kimi`** → New `kimi` profile
+
+Run `flip-cc profile list` after upgrading to see your migrated profiles.
+
+## 📋 Quick Usage
+
+### 1. Initial Setup
+
+Run the setup command to create your first profile:
 
 ```bash
 flip-cc setup
 ```
 
-2. **Launch Claude Code (Terminal):**
-   Launch your coding assistant with your backend of choice.
+This interactive wizard will guide you through creating your first profile. Alternatively, you can use the profile commands directly.
+
+### 2. Profile Management
 
 ```bash
-flip-cc launch kimi              # Launches with Kimi 2.5 environment variables
-flip-cc launch claude            # Launches via claude.ai subscription (no key needed)
-flip-cc launch claude --key      # Launches with your saved Anthropic API key
+# List all profiles
+flip-cc profile list
+
+# Add a new profile
+flip-cc profile add
+
+# Edit an existing profile
+flip-cc profile edit <profile-id>
+
+# Remove a profile
+flip-cc profile remove <profile-id>
+
+# Set the default profile
+flip-cc profile set-default <profile-id>
 ```
 
-3. **Use with VSCode Extension (Optional):**
-   Run the interactive setup to configure the Claude Code VSCode extension to use a specific backend.
+### 3. Launch Claude Code
 
 ```bash
-flip-cc vscode-config            # Interactive setup wizard
+# Launch with the default profile
+flip-cc launch
+
+# Launch with a specific profile
+flip-cc launch kimi
+flip-cc launch claude
+flip-cc launch my-openrouter-profile
+
+# For Anthropic profiles: force API key mode (subscription is default)
+flip-cc launch claude-api --key
 ```
 
-This will guide you through selecting your preferred backend and write the necessary environment variables directly to your VSCode `settings.json`.
+### 4. VSCode Extension Integration
 
-### 🔌 VSCode Extension Integration
+Configure the Claude Code VSCode extension to use a specific profile:
 
-`flip-cc vscode-config` configures the official Claude Code VSCode extension to use your chosen backend by writing the appropriate environment variables directly into your VSCode `settings.json`.
+```bash
+flip-cc vscode-config
+```
+
+This interactive wizard lets you select which profile to use in VSCode. To remove the configuration:
+
+```bash
+flip-cc vscode-config --remove
+```
+
+## 🔌 Profile System
+
+Profiles are the core of flip-cc's flexibility. Each profile defines:
+
+- **Provider:** Which AI service to use (Anthropic, Kimi, OpenRouter, OpenAI-compatible)
+- **Authentication:** API key or subscription mode (Anthropic only)
+- **Model:** Optional model override (e.g., `anthropic/claude-3.5-sonnet` for OpenRouter)
+- **Base URL:** Custom endpoint for OpenAI-compatible providers
+- **Extra Environment Variables:** Additional env vars to set when launching
+
+### Built-in Profiles
+
+After setup, you'll have these default profiles:
+
+| Profile ID | Provider | Description |
+|------------|----------|-------------|
+| `claude` | Anthropic | Subscription mode (uses your claude.ai login) |
+
+### Creating Custom Profiles
+
+Add profiles for other providers:
+
+```bash
+flip-cc profile add
+```
+
+**Example: OpenRouter Profile**
+```
+Provider: OpenRouter
+Profile ID: openrouter-sonnet
+Display name: OpenRouter Claude Sonnet
+API Key: sk-or-v1-...
+Model: Claude 3.5 Sonnet
+```
+
+**Example: Custom OpenAI-compatible Endpoint**
+```
+Provider: OpenAI-compatible
+Profile ID: local-llm
+Display name: Local LLM Server
+API Key: your-key
+Base URL: http://localhost:8000/v1
+Model: (optional)
+```
+
+## 🔌 VSCode Extension Integration
+
+`flip-cc vscode-config` configures the official Claude Code VSCode extension to use your chosen profile by writing the appropriate environment variables directly into your VSCode `settings.json`.
 
 ### How It Works
 
-1. Run the wizard — it asks which backend you want to use in VSCode.
+1. Run the wizard — it asks which profile you want to use in VSCode.
 2. flip-cc writes `claudeCode.environmentVariables` and `claudeCode.disableLoginPrompt` into your `settings.json`.
 3. Fully restart VSCode — the extension picks up the new settings automatically.
 
@@ -150,17 +252,11 @@ No PATH manipulation, no binary shims. Your existing VSCode settings are preserv
 flip-cc vscode-config
 ```
 
-The wizard will ask which backend to use:
+The wizard will show all your configured profiles to choose from.
 
-| Mode | Description |
-|------|-------------|
-| `kimi` | Moonshot Kimi 2.5 via your saved Kimi API key |
-| `claude-key` | Claude via your saved Anthropic API key |
-| `claude-subscription` | Claude via your claude.ai Pro/Max subscription |
+### Switching Profiles
 
-### Switching Modes
-
-Run the wizard again and select a different backend:
+Run the wizard again and select a different profile:
 
 ```bash
 flip-cc vscode-config
@@ -193,7 +289,7 @@ Auth token: present
 API key: none
 ```
 
-**API key mode:**
+**API key mode (Anthropic, OpenRouter, etc.):**
 ```
 Auth token: none
 API key: ANTHROPIC_API_KEY
@@ -214,13 +310,15 @@ API key: ANTHROPIC_API_KEY
 flip-cc/
 ├── src/
 │   ├── index.ts              # CLI entry point
-│   ├── types.ts              # TypeScript types
+│   ├── types.ts              # TypeScript types (Profile, ProviderType, AppConfig)
 │   ├── commands/
 │   │   ├── setup.ts          # Setup wizard
 │   │   ├── launch.ts         # Launch logic with env isolation
-│   │   └── vscode-config.ts  # VSCode extension integration
+│   │   ├── vscode-config.ts  # VSCode extension integration
+│   │   └── profile.ts        # Profile management (list, add, edit, remove, set-default)
 │   └── lib/
 │       ├── config.ts         # Config storage wrapper
+│       ├── profiles.ts       # Profile CRUD operations
 │       ├── spawn.ts          # Process spawning utilities
 │       └── validate.ts       # Input validation
 ├── build.ts                  # Multi-platform build script
@@ -250,7 +348,7 @@ bun run build
 
 ## 📚 Technical Documentation
 
-For detailed technical documentation including architecture decisions, authentication flow, and implementation details, see [TECHNICAL_DOCUMENTATION.md](./TECHNICAL_DOCUMENTATION.md).
+For detailed technical documentation including architecture decisions, authentication flow, configuration migration, and implementation details, see [TECHNICAL_DOCUMENTATION.md](./TECHNICAL_DOCUMENTATION.md).
 
 ## 🤝 Contributing
 

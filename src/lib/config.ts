@@ -1,5 +1,5 @@
 import Conf from 'conf';
-import type { AppConfig } from '../types.js';
+import type { AppConfig, Profile } from '../types.js';
 
 const schema = {
   claudeAuthMode: {
@@ -15,6 +15,12 @@ const schema = {
   setupComplete: {
     type: 'boolean',
   },
+  profiles: {
+    type: 'array',
+  },
+  defaultProfile: {
+    type: 'string',
+  },
 } as const;
 
 const config = new Conf<AppConfig>({
@@ -23,6 +29,7 @@ const config = new Conf<AppConfig>({
   defaults: {
     claudeAuthMode: 'subscription',
     setupComplete: false,
+    profiles: [],
   },
 });
 
@@ -60,4 +67,97 @@ export function clearConfig(): void {
  */
 export function getConfigPath(): string {
   return config.path;
+}
+
+/**
+ * Backup the current config file before migration.
+ */
+function backupConfig(): void {
+  const fs = require('fs');
+  const configPath = config.path;
+  const backupPath = `${configPath}.backup`;
+  try {
+    if (fs.existsSync(configPath)) {
+      fs.copyFileSync(configPath, backupPath);
+    }
+  } catch {
+    // Ignore backup errors
+  }
+}
+
+/**
+ * Migrate legacy config format to profile-based config.
+ * This should be called on first run after upgrade.
+ */
+export async function migrateToProfiles(): Promise<boolean> {
+  const currentConfig = config.store;
+
+  // Check if already migrated
+  if (currentConfig.profiles && currentConfig.profiles.length > 0) {
+    return false;
+  }
+
+  const profiles: Profile[] = [];
+
+  // Migrate Claude subscription mode
+  if (currentConfig.claudeAuthMode === 'subscription') {
+    profiles.push({
+      id: 'claude',
+      name: 'Claude (Subscription)',
+      provider: 'anthropic',
+      apiKey: '',
+    });
+  }
+
+  // Migrate Claude API key mode
+  if (currentConfig.claudeAuthMode === 'api-key' && currentConfig.anthropicApiKey) {
+    profiles.push({
+      id: 'claude-api',
+      name: 'Claude (API Key)',
+      provider: 'anthropic',
+      apiKey: currentConfig.anthropicApiKey,
+    });
+  }
+
+  // Migrate Kimi
+  if (currentConfig.kimiApiKey) {
+    profiles.push({
+      id: 'kimi',
+      name: 'Moonshot Kimi 2.5',
+      provider: 'kimi',
+      apiKey: currentConfig.kimiApiKey,
+      baseUrl: 'https://api.kimi.com/coding/',
+      model: 'kimi-for-coding',
+      extraEnv: { ENABLE_TOOL_SEARCH: 'false' },
+    });
+  }
+
+  // If no profiles were created, create default Claude profile
+  if (profiles.length === 0) {
+    profiles.push({
+      id: 'claude',
+      name: 'Claude (Subscription)',
+      provider: 'anthropic',
+      apiKey: '',
+    });
+  }
+
+  // Backup before migration
+  backupConfig();
+
+  // Save migrated profiles
+  setConfig({
+    profiles,
+    defaultProfile: profiles[0]?.id,
+  });
+
+  return true;
+}
+
+/**
+ * Check if migration is needed.
+ */
+export function needsMigration(): boolean {
+  const currentConfig = config.store;
+  return !currentConfig.profiles || currentConfig.profiles.length === 0;
 }

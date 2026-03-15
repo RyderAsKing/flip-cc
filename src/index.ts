@@ -5,6 +5,13 @@ import chalk from 'chalk';
 import { setupCommand } from './commands/setup.js';
 import { launchCommand } from './commands/launch.js';
 import { vscodeShimCommand } from './commands/vscode-config.js';
+import {
+  profileListCommand,
+  profileAddCommand,
+  profileEditCommand,
+  profileRemoveCommand,
+  profileSetDefaultCommand,
+} from './commands/profile.js';
 import packageJson from '../package.json' with { type: 'json' };
 
 const program = new Command();
@@ -28,12 +35,13 @@ program
 
 program
   .command('launch')
-  .description('Launch Claude Code with the specified provider')
-  .argument('<target>', 'Target provider: claude or kimi')
-  .option('--key', 'Use saved Anthropic API key (for claude target)', false)
-  .action(async (target, options) => {
+  .description('Launch Claude Code with the specified profile')
+  .argument('[profile]', 'Profile ID to use (defaults to default profile)')
+  .option('--key', 'Use API key for Anthropic profiles (subscription mode by default)', false)
+  .action(async (profile, options) => {
     try {
-      await launchCommand(target, options);
+      // Default to 'claude' profile if none specified
+      await launchCommand(profile || 'claude', options);
     } catch (error) {
       console.error(chalk.red('Launch failed:'), error instanceof Error ? error.message : error);
       process.exit(1);
@@ -49,6 +57,74 @@ program
       await vscodeShimCommand(options);
     } catch (error) {
       console.error(chalk.red('vscode-config failed:'), error instanceof Error ? error.message : error);
+      process.exit(1);
+    }
+  });
+
+// Profile management commands
+const profileCommand = program
+  .command('profile')
+  .description('Manage flip-cc profiles');
+
+profileCommand
+  .command('list')
+  .description('List all configured profiles')
+  .action(async () => {
+    try {
+      await profileListCommand();
+    } catch (error) {
+      console.error(chalk.red('Profile list failed:'), error instanceof Error ? error.message : error);
+      process.exit(1);
+    }
+  });
+
+profileCommand
+  .command('add')
+  .description('Add a new profile interactively')
+  .action(async () => {
+    try {
+      await profileAddCommand();
+    } catch (error) {
+      console.error(chalk.red('Profile add failed:'), error instanceof Error ? error.message : error);
+      process.exit(1);
+    }
+  });
+
+profileCommand
+  .command('edit')
+  .description('Edit an existing profile')
+  .argument('[id]', 'Profile ID to edit (interactive selector if not provided)')
+  .action(async (id) => {
+    try {
+      await profileEditCommand(id);
+    } catch (error) {
+      console.error(chalk.red('Profile edit failed:'), error instanceof Error ? error.message : error);
+      process.exit(1);
+    }
+  });
+
+profileCommand
+  .command('remove')
+  .description('Remove a profile')
+  .argument('[id]', 'Profile ID to remove (interactive selector if not provided)')
+  .action(async (id) => {
+    try {
+      await profileRemoveCommand(id);
+    } catch (error) {
+      console.error(chalk.red('Profile remove failed:'), error instanceof Error ? error.message : error);
+      process.exit(1);
+    }
+  });
+
+profileCommand
+  .command('set-default')
+  .description('Set the default profile')
+  .argument('[id]', 'Profile ID to set as default (interactive selector if not provided)')
+  .action(async (id) => {
+    try {
+      await profileSetDefaultCommand(id);
+    } catch (error) {
+      console.error(chalk.red('Profile set-default failed:'), error instanceof Error ? error.message : error);
       process.exit(1);
     }
   });

@@ -3,10 +3,11 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { execSync } from 'child_process';
 import chalk from 'chalk';
-import { getConfig } from '../lib/config.js';
+import { getConfig, needsMigration, migrateToProfiles } from '../lib/config.js';
 import { spawnWithInheritance } from '../lib/spawn.js';
-import { validateSetupComplete } from '../lib/validate.js';
-import type { LaunchTarget } from '../types.js';
+import { validateProfileReady } from '../lib/validate.js';
+import { getProfile, getDefaultProfileId, initializeDefaultProfiles } from '../lib/profiles.js';
+import type { Profile } from '../types.js';
 
 export interface LaunchOptions {
   key?: boolean;
@@ -118,77 +119,146 @@ function createIsolatedHomeForApiKey(): string {
   return tempHome;
 }
 
-export async function launchCommand(target: string, options: LaunchOptions): Promise<void> {
-  // Validate target
-  if (target !== 'claude' && target !== 'kimi') {
-    console.error(chalk.red(`Error: Unknown target "${target}". Use 'claude' or 'kimi'.`));
-    process.exit(1);
-  }
-
-  const launchTarget = target as LaunchTarget;
-  const config = getConfig();
-
-  // Validate setup is complete
-  const setupValidation = validateSetupComplete(config, launchTarget, options.key);
-  if (setupValidation !== true) {
-    console.error(chalk.red(`Error: ${setupValidation}`));
-    process.exit(1);
-  }
-
+/**
+ * Build environment variable overrides for a profile.
+ */
+function buildEnvOverrides(profile: Profile, options: LaunchOptions): Record<string, string | undefined> {
   const envOverrides: Record<string, string | undefined> = {};
-  let isolatedHome: string | undefined;
 
-  // Branch logic based on target
-  if (launchTarget === 'kimi') {
-    // Kimi: inject env vars to route Claude Code to Kimi API
-    if (!config.kimiApiKey) {
-      console.error(chalk.red('Error: Kimi API key not configured.'));
-      process.exit(1);
+  // Handle Anthropic provider
+  if (profile.provider === 'anthropic') {
+    const useApiKey = options.key && profile.apiKey;
+
+    if (useApiKey) {
+      // API key mode: set the key
+      envOverrides['ANTHROPIC_API_KEY'] = profile.apiKey;
+    } else if (!profile.apiKey) {
+      // Subscription mode: explicitly remove ANTHROPIC_API_KEY to avoid conflicts
+      envOverrides['ANTHROPIC_API_KEY'] = undefined;
+    } else {
+      // Has API key but --key flag not used - default to subscription mode
+      envOverrides['ANTHROPIC_API_KEY'] = undefined;
     }
 
-    envOverrides['ENABLE_TOOL_SEARCH'] = 'false';
-    envOverrides['ANTHROPIC_BASE_URL'] = 'https://api.kimi.com/coding/';
-    envOverrides['ANTHROPIC_API_KEY'] = config.kimiApiKey;
-    envOverrides['ANTHROPIC_MODEL'] = 'kimi-for-coding';
+    // Set base URL if provided
+    if (profile.baseUrl) {
+      envOverrides['ANTHROPIC_BASE_URL'] = profile.baseUrl;
+    }
 
-    // Create isolated home to avoid auth conflict with claude.ai credentials
+    // Set model if provided
+    if (profile.model) {
+      envOverrides['ANTHROPIC_MODEL'] = profile.model;
+    }
+  } else {
+    // Non-Anthropic providers: always use API key with Anthropic-compatible env vars
+    if (profile.apiKey) {
+      envOverrides['ANTHROPIC_API_KEY'] = profile.apiKey;
+    }
+
+    // Set base URL for non-Anthropic providers
+    if (profile.baseUrl) {
+      envOverrides['ANTHROPIC_BASE_URL'] = profile.baseUrl;
+    }
+
+    // Set model if provided
+    if (profile.model) {
+      envOverrides['ANTHROPIC_MODEL'] = profile.model;
+    }
+  }
+
+  // Apply extra environment variables from profile
+  if (profile.extraEnv) {
+    for (const [key, value] of Object.entries(profile.extraEnv)) {
+      envOverrides[key] = value;
+    }
+  }
+
+  return envOverrides;
+}
+
+/**
+ * Determine if a profile needs isolated home directory.
+ * Isolation is needed when using API keys to avoid conflicts with claude.ai credentials.
+ */
+function needsIsolatedHome(profile: Profile, options: LaunchOptions): boolean {
+  // Anthropic with API key and --key flag
+  if (profile.provider === 'anthropic' && options.key && profile.apiKey) {
+    return true;
+  }
+
+  // Non-Anthropic providers always use API keys
+  if (profile.provider !== 'anthropic' && profile.apiKey) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Launch Claude Code with the specified profile.
+ */
+export async function launchCommand(profileId: string, options: LaunchOptions): Promise<void> {
+  // Migrate legacy config if needed
+  if (needsMigration()) {
+    await migrateToProfiles();
+  }
+
+  // Initialize default profiles if none exist
+  initializeDefaultProfiles();
+
+  // Resolve profile: if profileId not provided or not found, use default
+  let profile = getProfile(profileId);
+
+  if (!profile) {
+    const defaultId = getDefaultProfileId();
+    if (defaultId && defaultId !== profileId) {
+      console.log(chalk.yellow(`Profile "${profileId}" not found. Using default profile "${defaultId}".`));
+      profile = getProfile(defaultId);
+    }
+  }
+
+  if (!profile) {
+    console.error(chalk.red(`Error: Profile "${profileId}" not found and no default profile set.`));
+    console.error(chalk.yellow('Run "flip-cc profile list" to see available profiles.'));
+    console.error(chalk.yellow('Run "flip-cc setup" to configure profiles.'));
+    process.exit(1);
+  }
+
+  // Validate profile is ready
+  const validation = validateProfileReady(profile.id);
+  if (validation !== true) {
+    console.error(chalk.red(`Error: ${validation}`));
+    process.exit(1);
+  }
+
+  // Build environment overrides
+  const envOverrides = buildEnvOverrides(profile, options);
+
+  // Determine if we need isolated home
+  const useIsolatedHome = needsIsolatedHome(profile, options);
+  let isolatedHome: string | undefined;
+
+  if (useIsolatedHome) {
     isolatedHome = createIsolatedHomeForApiKey();
     envOverrides['HOME'] = isolatedHome;
+
     // Add ~/.local/bin to PATH to suppress warnings
     const localBinPath = join(isolatedHome, '.local', 'bin');
     envOverrides['PATH'] = `${localBinPath}:${process.env.PATH || ''}`;
+
     // Also update USERPROFILE for Windows compatibility
     if (process.platform === 'win32') {
       envOverrides['USERPROFILE'] = isolatedHome;
     }
+  }
 
-    console.log(chalk.blue('Launching Claude Code with Moonshot Kimi 2.5...'));
-  } else if (launchTarget === 'claude') {
-    if (options.key) {
-      // Use saved Anthropic API key
-      if (!config.anthropicApiKey) {
-        console.error(chalk.red('Error: Anthropic API key not configured.'));
-        process.exit(1);
-      }
-
-      envOverrides['ANTHROPIC_API_KEY'] = config.anthropicApiKey;
-      
-      // For API key mode, also isolate home to avoid conflict with subscription
-      isolatedHome = createIsolatedHomeForApiKey();
-      envOverrides['HOME'] = isolatedHome;
-      // Add ~/.local/bin to PATH to suppress warnings
-      const localBinPath = join(isolatedHome, '.local', 'bin');
-      envOverrides['PATH'] = `${localBinPath}:${process.env.PATH || ''}`;
-      if (process.platform === 'win32') {
-        envOverrides['USERPROFILE'] = isolatedHome;
-      }
-      
-      console.log(chalk.blue('Launching Claude Code with API key...'));
-    } else {
-      // Subscription mode: explicitly remove ANTHROPIC_API_KEY to avoid conflicts
-      envOverrides['ANTHROPIC_API_KEY'] = undefined;
-      console.log(chalk.blue('Launching Claude Code with subscription auth...'));
-    }
+  // Log launch message
+  if (profile.provider === 'anthropic' && !profile.apiKey) {
+    console.log(chalk.blue(`Launching Claude Code with ${profile.name} (subscription)...`));
+  } else if (profile.provider === 'anthropic' && options.key) {
+    console.log(chalk.blue(`Launching Claude Code with ${profile.name} (API key)...`));
+  } else {
+    console.log(chalk.blue(`Launching Claude Code with ${profile.name}...`));
   }
 
   try {

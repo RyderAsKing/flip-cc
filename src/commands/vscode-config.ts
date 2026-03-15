@@ -2,9 +2,9 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync, copyFileSyn
 import { join, dirname } from 'path';
 import { confirm, select } from '@inquirer/prompts';
 import chalk from 'chalk';
-import { getConfig } from '../lib/config.js';
-import { validateSetupComplete } from '../lib/validate.js';
-import type { LaunchTarget } from '../types.js';
+import { getProfiles, getProfile, getDefaultProfileId } from '../lib/profiles.js';
+import { validateProfileReady } from '../lib/validate.js';
+import type { Profile } from '../types.js';
 
 /**
  * Get the VSCode user settings.json path (platform-aware)
@@ -21,20 +21,70 @@ function getVSCodeSettingsPath(): string {
 
 type EnvVar = { name: string; value: string };
 
-function buildEnvVars(mode: string, config: ReturnType<typeof getConfig>): EnvVar[] {
-  if (mode === 'kimi') {
-    return [
-      { name: 'ANTHROPIC_BASE_URL', value: 'https://api.kimi.com/coding/' },
-      { name: 'ANTHROPIC_API_KEY', value: config.kimiApiKey! },
-      { name: 'ANTHROPIC_MODEL', value: 'kimi-for-coding' },
-      { name: 'ENABLE_TOOL_SEARCH', value: 'false' },
-    ];
+/**
+ * Build environment variables from a profile for VSCode extension.
+ */
+function buildEnvVarsFromProfile(profile: Profile): EnvVar[] {
+  const envVars: EnvVar[] = [];
+
+  // For Anthropic provider with no API key (subscription mode)
+  if (profile.provider === 'anthropic' && !profile.apiKey) {
+    // Subscription mode: disable extended thinking to prevent errors
+    envVars.push({ name: 'CLAUDE_CODE_MAX_THINKING_TOKENS', value: '0' });
+    return envVars;
   }
-  if (mode === 'claude-key') {
-    return [{ name: 'ANTHROPIC_API_KEY', value: config.anthropicApiKey! }];
+
+  // API key mode (all providers including non-Anthropic)
+  if (profile.apiKey) {
+    envVars.push({ name: 'ANTHROPIC_API_KEY', value: profile.apiKey });
   }
-  // Subscription mode: disable extended thinking to prevent "Invalid signature in thinking block" errors
-  return [{ name: 'CLAUDE_CODE_MAX_THINKING_TOKENS', value: '0' }];
+
+  // Base URL for the provider
+  if (profile.baseUrl) {
+    envVars.push({ name: 'ANTHROPIC_BASE_URL', value: profile.baseUrl });
+  }
+
+  // Model if specified
+  if (profile.model) {
+    envVars.push({ name: 'ANTHROPIC_MODEL', value: profile.model });
+  }
+
+  // Extra environment variables from profile
+  if (profile.extraEnv) {
+    for (const [key, value] of Object.entries(profile.extraEnv)) {
+      envVars.push({ name: key, value });
+    }
+  }
+
+  return envVars;
+}
+
+/**
+ * Get a display name for the backend based on profile.
+ */
+function getBackendDisplayName(profile: Profile): string {
+  if (profile.provider === 'anthropic') {
+    return profile.apiKey ? 'Claude (API Key)' : 'Claude (Subscription)';
+  }
+  if (profile.provider === 'kimi') {
+    return 'Moonshot Kimi 2.5';
+  }
+  if (profile.provider === 'openrouter') {
+    return `OpenRouter${profile.model ? ` (${profile.model.split('/').pop()})` : ''}`;
+  }
+  return profile.name;
+}
+
+/**
+ * Check if a profile uses API key mode (requires disableLoginPrompt).
+ */
+function usesApiKeyMode(profile: Profile): boolean {
+  // Anthropic without API key is subscription mode
+  if (profile.provider === 'anthropic' && !profile.apiKey) {
+    return false;
+  }
+  // All others use API key
+  return true;
 }
 
 /**
@@ -156,6 +206,33 @@ function removeLegacyShim(): void {
   }
 }
 
+/**
+ * Mask an API key for display (show only last 4 characters).
+ */
+function maskApiKey(key: string): string {
+  if (!key || key.length === 0) return chalk.gray('(none)');
+  if (key.length <= 4) return '****';
+  return key.slice(0, 4) + '****' + key.slice(-4);
+}
+
+/**
+ * Get provider display name.
+ */
+function getProviderDisplay(provider: string): string {
+  switch (provider) {
+    case 'anthropic':
+      return chalk.blue('Anthropic');
+    case 'kimi':
+      return chalk.magenta('Moonshot Kimi');
+    case 'openrouter':
+      return chalk.green('OpenRouter');
+    case 'openai-compatible':
+      return chalk.yellow('OpenAI-compatible');
+    default:
+      return provider;
+  }
+}
+
 export interface VscodeShimOptions {
   remove?: boolean;
 }
@@ -175,11 +252,10 @@ export async function vscodeShimCommand(options: VscodeShimOptions): Promise<voi
     return;
   }
 
-  // ── Validate setup ──────────────────────────────────────────────────────────
-  const config = getConfig();
-  const setupValidation = validateSetupComplete(config, 'kimi', false);
-  if (setupValidation !== true) {
-    console.error(chalk.red('Error: ' + setupValidation));
+  // ── Check for profiles ──────────────────────────────────────────────────────
+  const profiles = getProfiles();
+  if (profiles.length === 0) {
+    console.error(chalk.red('Error: No profiles configured.'));
     console.log(chalk.yellow('Please run ') + chalk.cyan('flip-cc setup') + chalk.yellow(' first.'));
     process.exit(1);
   }
@@ -200,49 +276,50 @@ export async function vscodeShimCommand(options: VscodeShimOptions): Promise<voi
   console.log();
   console.log(chalk.blue('📝 VSCode Extension Integration Setup\n'));
 
-  // ── Mode selection ──────────────────────────────────────────────────────────
-  const vscodeMode = await select<LaunchTarget | 'claude-key' | 'claude-subscription'>({
-    message: 'Which backend would you like to use in VSCode?',
-    choices: [
-      {
-        name: 'Moonshot Kimi 2.5',
-        value: 'kimi',
-        description: config.kimiApiKey
-          ? 'Use your configured Kimi API key'
-          : chalk.yellow('Kimi API key not configured yet'),
-      },
-      {
-        name: 'Claude (API Key)',
-        value: 'claude-key',
-        description: config.anthropicApiKey
-          ? 'Use your configured Anthropic API key'
-          : chalk.yellow('Anthropic API key not configured yet'),
-      },
-      {
-        name: 'Claude (Subscription)',
-        value: 'claude-subscription',
-        description: 'Use your claude.ai Pro/Max subscription',
-      },
-    ],
-    default: 'kimi',
+  // ── Profile selection ───────────────────────────────────────────────────────
+  const defaultProfileId = getDefaultProfileId();
+
+  const profileChoices = profiles.map((profile) => {
+    const isDefault = profile.id === defaultProfileId;
+    const backendName = getBackendDisplayName(profile);
+    const description = profile.model
+      ? `Model: ${profile.model}`
+      : profile.provider === 'anthropic' && !profile.apiKey
+        ? 'Uses claude.ai subscription'
+        : undefined;
+
+    return {
+      name: `${profile.name}${isDefault ? chalk.green(' [default]') : ''}`,
+      value: profile.id,
+      description: description || backendName,
+    };
   });
 
-  if (vscodeMode === 'kimi' && !config.kimiApiKey) {
-    console.error(chalk.red('\nError: Kimi API key not configured.'));
-    console.log(chalk.yellow('Run ') + chalk.cyan('flip-cc setup') + chalk.yellow(' to add your Kimi API key first.'));
+  const selectedProfileId = await select<string>({
+    message: 'Which profile would you like to use in VSCode?',
+    choices: profileChoices,
+    default: defaultProfileId,
+  });
+
+  const profile = getProfile(selectedProfileId);
+  if (!profile) {
+    console.error(chalk.red(`Error: Profile "${selectedProfileId}" not found.`));
     process.exit(1);
   }
-  if (vscodeMode === 'claude-key' && !config.anthropicApiKey) {
-    console.error(chalk.red('\nError: Anthropic API key not configured.'));
-    console.log(chalk.yellow('Run ') + chalk.cyan('flip-cc setup') + chalk.yellow(' to add your Anthropic API key first.'));
+
+  // Validate profile is ready
+  const validation = validateProfileReady(selectedProfileId);
+  if (validation !== true) {
+    console.error(chalk.red(`Error: ${validation}`));
     process.exit(1);
   }
 
   // ── Update settings.json ────────────────────────────────────────────────────
-  const envVars = buildEnvVars(vscodeMode, config);
+  const envVars = buildEnvVarsFromProfile(profile);
+  const disableLogin = usesApiKeyMode(profile);
 
   try {
-    updateSettingsFile(settingsPath, envVars, vscodeMode !== 'claude-subscription');
+    updateSettingsFile(settingsPath, envVars, disableLogin);
   } catch (error) {
     console.error(chalk.red('\nError updating VSCode settings:'), error instanceof Error ? error.message : error);
     process.exit(1);
@@ -257,10 +334,13 @@ export async function vscodeShimCommand(options: VscodeShimOptions): Promise<voi
   console.log();
   console.log(chalk.bold('Configuration:'));
   console.log(`  Settings file: ${chalk.cyan(settingsPath)}`);
-  console.log(`  Backend: ${chalk.cyan(vscodeMode)}`);
+  console.log(`  Profile: ${chalk.cyan(profile.name)} (${chalk.dim(profile.id)})`);
+  console.log(`  Provider: ${getProviderDisplay(profile.provider)}`);
   if (envVars.length > 0) {
+    console.log();
+    console.log(chalk.bold('Environment variables:'));
     for (const v of envVars) {
-      const display = v.name === 'ANTHROPIC_API_KEY' ? v.value.slice(0, 12) + '...' : v.value;
+      const display = v.name.includes('API_KEY') ? maskApiKey(v.value) : v.value;
       console.log(`  ${v.name}: ${chalk.gray(display)}`);
     }
   }
@@ -274,8 +354,8 @@ export async function vscodeShimCommand(options: VscodeShimOptions): Promise<voi
   console.log();
   console.log(chalk.gray('Note: A full restart is required for environment variable changes to take effect.\n'));
 
-  console.log(chalk.bold('Switching modes later:'));
-  console.log('  Run this command again to change the backend.\n');
+  console.log(chalk.bold('Switching profiles later:'));
+  console.log(`  Run ${chalk.cyan('flip-cc vscode-config')} again to change the profile.\n`);
 
   console.log(chalk.bold('To remove the configuration:'));
   console.log(`  ${chalk.cyan('flip-cc vscode-config --remove')}\n`);
