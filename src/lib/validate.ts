@@ -27,6 +27,11 @@ export function validateApiKey(key: string, type: ProviderType): string | true {
     if (key.length < 10) {
       return 'API key seems too short (minimum 10 characters)';
     }
+  } else if (type === 'openai-compatible') {
+    // OpenAI-compatible keys: minimum 10 characters
+    if (key.length < 10) {
+      return 'API key seems too short (minimum 10 characters)';
+    }
   }
 
   return true;
@@ -59,6 +64,16 @@ export function validateProfile(profile: Profile): string | true {
   const keyValidation = validateApiKey(profile.apiKey, profile.provider);
   if (keyValidation !== true) {
     return keyValidation;
+  }
+
+  // openai-compatible profiles also require a baseUrl and model
+  if (profile.provider === 'openai-compatible') {
+    if (!profile.baseUrl) {
+      return 'openai-compatible profiles require a base URL (e.g. https://api.groq.com/openai/v1)';
+    }
+    if (!profile.model || profile.model.trim().length === 0) {
+      return 'openai-compatible profiles require a model name to avoid forwarding Claude model IDs upstream';
+    }
   }
 
   return true;

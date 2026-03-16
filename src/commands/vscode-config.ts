@@ -1,5 +1,6 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync, copyFileSync } from 'fs';
-import { join, dirname } from 'path';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'fs';
+import { join, dirname, resolve, relative, isAbsolute } from 'path';
+import { maskApiKey, getProviderDisplay } from '../lib/utils.js';
 import { confirm, select } from '@inquirer/prompts';
 import chalk from 'chalk';
 import { getProfiles, getProfile, getDefaultProfileId } from '../lib/profiles.js';
@@ -11,20 +12,44 @@ import type { Profile } from '../types.js';
  */
 function getVSCodeSettingsPath(): string {
   const home = process.env.HOME || process.env.USERPROFILE || '/tmp';
+  let settingsPath: string;
+  let expectedBase: string;
+
   if (process.platform === 'darwin') {
-    return join(home, 'Library', 'Application Support', 'Code', 'User', 'settings.json');
+    expectedBase = resolve(home);
+    settingsPath = resolve(join(home, 'Library', 'Application Support', 'Code', 'User', 'settings.json'));
   } else if (process.platform === 'win32') {
-    return join(process.env.APPDATA || home, 'Code', 'User', 'settings.json');
+    const appdata = process.env.APPDATA || home;
+    expectedBase = resolve(appdata);
+    settingsPath = resolve(join(appdata, 'Code', 'User', 'settings.json'));
+  } else {
+    expectedBase = resolve(home);
+    settingsPath = resolve(join(home, '.config', 'Code', 'User', 'settings.json'));
   }
-  return join(home, '.config', 'Code', 'User', 'settings.json');
+
+  const rel = relative(expectedBase, settingsPath);
+  if (isAbsolute(rel) || rel.startsWith('..')) {
+    throw new Error(
+      `VSCode settings path "${settingsPath}" is outside the expected base directory "${expectedBase}". ` +
+        'Check your HOME or APPDATA environment variable for path traversal.'
+    );
+  }
+
+  return settingsPath;
 }
 
 type EnvVar = { name: string; value: string };
 
 /**
  * Build environment variables from a profile for VSCode extension.
+ * Returns null for providers that cannot be used with VSCode (e.g. openai-compatible).
  */
-function buildEnvVarsFromProfile(profile: Profile): EnvVar[] {
+function buildEnvVarsFromProfile(profile: Profile): EnvVar[] | null {
+  // openai-compatible requires the flip-cc proxy which only runs during CLI launch
+  if (profile.provider === 'openai-compatible') {
+    return null;
+  }
+
   const envVars: EnvVar[] = [];
 
   // For Anthropic provider with no API key (subscription mode)
@@ -88,95 +113,45 @@ function usesApiKeyMode(profile: Profile): boolean {
 }
 
 /**
- * Update settings.json by doing targeted insertions near the closing brace.
- * Always backs up the file first. Never removes or rewrites existing content.
+ * Update settings.json using JSON parse/stringify.
+ * Always backs up the file first. Warns and skips if the file is not valid JSON.
  */
 function updateSettingsFile(settingsPath: string, envVars: EnvVar[], disableLogin = true): void {
   const dir = dirname(settingsPath);
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
 
-  let content: string;
+  let rawContent: string;
   if (existsSync(settingsPath)) {
-    // Back up before any modification
-    copyFileSync(settingsPath, settingsPath + '.flip-cc.bak');
-    content = readFileSync(settingsPath, 'utf-8');
+    rawContent = readFileSync(settingsPath, 'utf-8');
+    // Back up before any modification with restricted permissions
+    writeFileSync(settingsPath + '.flip-cc.bak', rawContent, { encoding: 'utf-8', mode: 0o600 });
   } else {
-    content = '{}\n';
+    rawContent = '{}';
   }
 
-  // Build replacement block
-  if (envVars.length === 0) {
-    // No overrides: strip any previously managed keys
-    content = removeFlipCcKeys(content);
-  } else {
-    // Strip existing managed keys first, then re-insert cleanly
-    content = removeFlipCcKeys(content);
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(rawContent) as Record<string, unknown>;
+  } catch {
+    console.warn(
+      chalk.yellow('Warning: VSCode settings.json is not valid JSON. Skipping write to avoid corruption.'),
+    );
+    return;
+  }
 
-    const envVarsJson = JSON.stringify(envVars, null, 2)
-      .split('\n')
-      .map((l, i) => (i === 0 ? l : '  ' + l))
-      .join('\n');
+  // Remove any previously managed keys
+  delete parsed['claudeCode.environmentVariables'];
+  delete parsed['claudeCode.disableLoginPrompt'];
 
-    const loginLine = disableLogin ? `\n  "claudeCode.disableLoginPrompt": true,` : '';
-    const block = `  "claudeCode.environmentVariables": ${envVarsJson},${loginLine}\n`;
-
-    // Insert before the final closing brace
-    const lastBrace = content.lastIndexOf('}');
-    if (lastBrace === -1) {
-      content = `{\n${block}}\n`;
-    } else {
-      const before = content.slice(0, lastBrace);
-      // Ensure there's a comma on the last real property if needed
-      const trimmed = before.trimEnd();
-      const needsComma = trimmed.length > 1 && !trimmed.endsWith('{') && !trimmed.endsWith(',');
-      content = trimmed + (needsComma ? ',' : '') + '\n' + block + '}\n';
+  // Re-insert if we have env vars to write
+  if (envVars.length > 0) {
+    parsed['claudeCode.environmentVariables'] = envVars;
+    if (disableLogin) {
+      parsed['claudeCode.disableLoginPrompt'] = true;
     }
   }
 
-  writeFileSync(settingsPath, content, 'utf-8');
-}
-
-/**
- * Remove claudeCode.environmentVariables and claudeCode.disableLoginPrompt from content.
- * Uses a line-based approach: drop lines belonging to those keys.
- */
-function removeFlipCcKeys(content: string): string {
-  const lines = content.split('\n');
-  const result: string[] = [];
-  let skip = 0; // depth counter for skipping array/object blocks
-
-  for (const line of lines) {
-    if (line === undefined) continue;
-
-    if (skip > 0) {
-      for (const ch of line) {
-        if (ch === '[' || ch === '{') skip++;
-        if (ch === ']' || ch === '}') skip--;
-      }
-      continue;
-    }
-
-    const isEnvVars = /"claudeCode\.environmentVariables"\s*:/.test(line);
-    const isDisable = /"claudeCode\.disableLoginPrompt"\s*:/.test(line);
-
-    if (isEnvVars) {
-      for (const ch of line) {
-        if (ch === '[') skip++;
-        if (ch === ']') skip--;
-      }
-      continue;
-    }
-
-    if (isDisable) continue;
-
-    result.push(line);
-  }
-
-  // Clean up any double-commas or trailing commas before } left by removal
-  let out = result.join('\n');
-  out = out.replace(/,(\s*,)+/g, ',');
-  out = out.replace(/,(\s*[}\]])/g, '$1');
-  return out;
+  writeFileSync(settingsPath, JSON.stringify(parsed, null, 2) + '\n', { mode: 0o600 });
 }
 
 /**
@@ -184,9 +159,7 @@ function removeFlipCcKeys(content: string): string {
  */
 function removeSettings(settingsPath: string): void {
   if (!existsSync(settingsPath)) return;
-  copyFileSync(settingsPath, settingsPath + '.flip-cc.bak');
-  const content = removeFlipCcKeys(readFileSync(settingsPath, 'utf-8'));
-  writeFileSync(settingsPath, content.trimEnd() + '\n', 'utf-8');
+  updateSettingsFile(settingsPath, []);
 }
 
 /**
@@ -206,30 +179,6 @@ function removeLegacyShim(): void {
   }
 }
 
-/**
- * Mask an API key for display (show only last 4 characters).
- */
-function maskApiKey(key: string): string {
-  if (!key || key.length === 0) return chalk.gray('(none)');
-  if (key.length <= 4) return '****';
-  return key.slice(0, 4) + '****' + key.slice(-4);
-}
-
-/**
- * Get provider display name.
- */
-function getProviderDisplay(provider: string): string {
-  switch (provider) {
-    case 'anthropic':
-      return chalk.blue('Anthropic');
-    case 'kimi':
-      return chalk.magenta('Moonshot Kimi');
-    case 'openrouter':
-      return chalk.green('OpenRouter');
-    default:
-      return provider;
-  }
-}
 
 export interface VscodeShimOptions {
   remove?: boolean;
@@ -314,6 +263,14 @@ export async function vscodeShimCommand(options: VscodeShimOptions): Promise<voi
 
   // ── Update settings.json ────────────────────────────────────────────────────
   const envVars = buildEnvVarsFromProfile(profile);
+
+  if (envVars === null) {
+    console.error(chalk.red('\nError: openai-compatible profiles require the flip-cc proxy (CLI launch only).'));
+    console.error(chalk.yellow('VSCode config is not supported for this provider.'));
+    console.error(chalk.dim('Use "flip-cc launch ' + profile.id + '" to run with this profile.'));
+    process.exit(1);
+  }
+
   const disableLogin = usesApiKeyMode(profile);
 
   try {
