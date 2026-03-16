@@ -2,6 +2,8 @@
 
 This document provides detailed technical information about flip-cc's architecture, implementation, and design decisions.
 
+For a quick overview see [getting-started.md](./getting-started.md); for provider/profile details see [profiles.md](./profiles.md); for VSCode see [vscode-integration.md](./vscode-integration.md); for a developer deep-dive see [architecture.md](./architecture.md).
+
 ## Table of Contents
 
 1. [Architecture Overview](#architecture-overview)
@@ -11,9 +13,10 @@ This document provides detailed technical information about flip-cc's architectu
 5. [Configuration Migration](#configuration-migration)
 6. [VSCode Extension Integration](#vscode-extension-integration)
 7. [Provider Implementations](#provider-implementations)
-8. [Security Considerations](#security-considerations)
-9. [Error Handling](#error-handling)
-10. [Development Guide](#development-guide)
+8. [Proxy Mechanism](#proxy-mechanism)
+9. [Security Considerations](#security-considerations)
+10. [Error Handling](#error-handling)
+11. [Development Guide](#development-guide)
 
 ---
 
@@ -183,7 +186,7 @@ For API key modes, flip-cc creates a temporary isolated home directory to preven
 ### Directory Structure
 
 ```
-/tmp/flip-cc-apikey-XXXXXX/
+/tmp/.fcc-XXXXXX/
 ├── .claude.json                    # Copied from real home
 ├── .claude/
 │   ├── settings.json               # Copied from real home
@@ -196,7 +199,7 @@ For API key modes, flip-cc creates a temporary isolated home directory to preven
 
 ### Isolation Process
 
-1. **Create temp directory:** `mkdtempSync(join(tmpdir(), 'flip-cc-apikey-'))`
+1. **Create temp directory:** `mkdtempSync(join(tmpdir(), '.fcc-'))`
 2. **Copy `.claude.json`:** Main config file (themes, settings)
 3. **Copy `.claude/` contents:** Everything except `.credentials.json`
 4. **Filter credentials:** Create new `.credentials.json` with only:
@@ -383,6 +386,48 @@ The VSCode config wizard shows all configured profiles with descriptions:
 
 ---
 
+## Proxy Mechanism
+
+The built-in proxy is used exclusively for `openai-compatible` profiles. It bridges Claude Code's Anthropic Messages API calls to OpenAI Chat Completions-format endpoints.
+
+### Why it exists
+
+Claude Code sends requests in Anthropic Messages API format. OpenAI-compatible endpoints expect OpenAI Chat Completions format. These differ in request structure, response shape, and streaming event format (Anthropic SSE vs. OpenAI SSE). A translation layer running locally bridges the two protocols transparently.
+
+### How it works
+
+`needsProxy(profile)` returns `true` when `profile.provider === 'openai-compatible'`. When true, `launchCommand` calls `startProxy(profile)` before creating the isolated home directory.
+
+`startProxy`:
+
+1. Generates a fresh per-session `authToken` in `sk-ant-proxy-<64-random-bytes>` format. The `sk-ant-` prefix satisfies Claude Code's API key validation; the 64 random bytes provide 512 bits of entropy.
+2. Starts a Bun HTTP server bound to `127.0.0.1:0`. Port `0` lets the OS assign an available port atomically, avoiding any time-of-check/time-of-use race.
+3. Returns a `ProxyHandle` containing `{ port, baseUrl, authToken, stop }`.
+
+`launchCommand` then:
+- Sets `ANTHROPIC_BASE_URL = http://127.0.0.1:<port>` (overriding any profile `baseUrl`)
+- Sets `ANTHROPIC_API_KEY = authToken`
+- Passes `authToken` as the key to pre-approve in `~/.claude.json` (so Claude Code skips the "Detected a custom API key" dialog)
+
+### Request handling
+
+The proxy handler verifies every request by checking `x-api-key` or `Authorization: Bearer` against `authToken` and returns 401 on mismatch. It then:
+
+- Translates `POST /v1/messages` (Anthropic) → `POST <profile.baseUrl>/chat/completions` (OpenAI) using `anthropicToOpenAI` from `proxy-convert.ts`
+- Authenticates to the upstream endpoint using `profile.apiKey` in `Authorization: Bearer`
+- Converts the upstream response back to Anthropic format (`openAIToAnthropic` for non-streaming; `openAIStreamChunkToAnthropic` for SSE streaming)
+- Handles `GET /v1/models` with a minimal model list response
+
+### Cleanup
+
+`proxyHandle.stop()` (which calls `server.stop(true)`) is called in the `finally` block of `launchCommand`, ensuring the server shuts down even if the `claude` process exits unexpectedly.
+
+### VSCode limitation
+
+The proxy only runs during a `flip-cc launch` session. The VSCode extension starts independently, so `openai-compatible` profiles cannot be configured via `flip-cc vscode-config`.
+
+---
+
 ## Security Considerations
 
 ### API Key Storage
@@ -394,7 +439,7 @@ The VSCode config wizard shows all configured profiles with descriptions:
 
 ### Isolated Home Directory
 
-- Temp directories are created with random suffixes (`flip-cc-apikey-XXXXXX`)
+- Temp directories are created with random suffixes (`.fcc-XXXXXX`)
 - Directories are removed after use (cleanup in `finally` block)
 - Symlinks are validated before creation
 
