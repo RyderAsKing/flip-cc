@@ -159,6 +159,28 @@ Output shows each profile's ID, name, provider, and a masked API key (first 4 an
 
 ---
 
+## Viewing statistics
+
+flip-cc tracks session duration for every profile launch. View your stats with:
+
+```bash
+# Show stats for all profiles
+flip-cc stats
+
+# Show stats for a specific profile
+flip-cc stats kimi
+
+# Clear all statistics
+flip-cc stats --clear
+
+# Clear statistics for a specific profile
+flip-cc stats --clear kimi
+```
+
+The output shows per-profile session counts and time spent in the last 30 days, total time across all sessions, average session length, and the date of the most recent session. Up to 200 sessions are retained.
+
+---
+
 ## Upgrading
 
 ```bash

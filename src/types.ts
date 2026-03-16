@@ -28,3 +28,17 @@ export interface AppConfig {
   profiles?: Profile[];
   defaultProfile?: string;
 }
+
+export interface SessionRecord {
+  profileId: string;
+  profileName: string;
+  provider: ProviderType;
+  startedAt: string;      // ISO 8601
+  endedAt: string;        // ISO 8601
+  durationMs: number;
+  exitCode: number | null;
+}
+
+export interface StatsData {
+  sessions: SessionRecord[];
+}

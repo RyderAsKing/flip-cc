@@ -14,6 +14,7 @@ flip-cc/
 │   ├── commands/
 │   │   ├── launch.ts              # Environment isolation, proxy orchestration, process spawn
 │   │   ├── profile.ts             # Profile CRUD commands (interactive prompts)
+│   │   ├── stats.ts               # Session statistics display command
 │   │   ├── vscode-config.ts       # VSCode settings.json read/write
 │   │   └── setup/
 │   │       ├── index.ts           # Setup wizard entry point
@@ -27,6 +28,7 @@ flip-cc/
 │       ├── proxy.ts               # Local HTTP proxy (Anthropic ↔ OpenAI format bridge)
 │       ├── proxy-convert.ts       # Request/response format conversion functions
 │       ├── spawn.ts               # child_process wrapper with stdio inheritance and signal forwarding
+│       ├── stats.ts               # Session stats persistence (Conf-based, stats.json)
 │       ├── utils.ts               # maskApiKey, getProviderDisplay, etc.
 │       └── validate.ts            # API key format validation; profile readiness checks
 ├── build.ts                       # Bun compile script (4 binary targets)
@@ -44,12 +46,14 @@ flip-cc/
 | `src/types.ts` | Single source of truth for `Profile`, `ProviderType`, `AuthMode`, `AppConfig`, `LaunchTarget`. |
 | `src/commands/launch.ts` | Orchestrates the full launch flow: migration → profile resolution → env build → proxy → isolated home → spawn → cleanup. |
 | `src/commands/profile.ts` | Interactive `@inquirer/prompts` flows for `list`, `add`, `edit`, `remove`, `set-default`. |
+| `src/commands/stats.ts` | Displays per-profile session statistics (30-day window, totals, averages). |
 | `src/commands/vscode-config.ts` | Reads/writes `settings.json`; manages backup; detects VSCode settings path per platform. |
 | `src/lib/config.ts` | Wraps the `conf` library; exposes typed `getConfig`/`setConfig`; implements `migrateToProfiles`. |
 | `src/lib/profiles.ts` | Pure functions over the profile array in config: `getProfile`, `addProfile`, `updateProfile`, `removeProfile`, `setDefaultProfile`, provider defaults (`getProviderBaseUrl`, `getProviderDefaultModel`, `getProviderExtraEnv`). |
 | `src/lib/proxy.ts` | `needsProxy`, `startProxy`, HTTP handler, SSE stream converter. |
 | `src/lib/proxy-convert.ts` | Stateless conversion between Anthropic Messages API format and OpenAI Chat Completions format. |
-| `src/lib/spawn.ts` | `spawnWithInheritance`: wraps `child_process.spawn` with `stdio: 'inherit'`, env overrides, and signal forwarding. |
+| `src/lib/spawn.ts` | `spawnWithInheritance`: wraps `child_process.spawn` with `stdio: 'inherit'`, env overrides, and signal forwarding. Returns exit code. |
+| `src/lib/stats.ts` | `addSession`, `getSessions`, `clearStats`: Conf-based persistence for session records (`stats.json`). Rolling window of 200 sessions. |
 | `src/lib/validate.ts` | `validateApiKey` (prefix checks per provider), `validateProfileReady` (API key present, base URL for openai-compatible). |
 
 ---
@@ -257,6 +261,16 @@ Additionally, all `extraEnv` key names must match the regex `/^[A-Z_][A-Z0-9_]*$
 - **API key masking:** `profile list` shows only the first 4 and last 4 characters of each key.
 - **VSCode settings permissions:** `settings.json` and its backup are written with `mode: 0o600`.
 - **Path traversal guard:** `vscode-config.ts` validates the computed `settings.json` path is inside the expected base directory (home or APPDATA) using `path.relative`.
+
+---
+
+## Session tracking
+
+Every `flip-cc launch` records a `SessionRecord` to a separate `stats.json` file (managed by a second `Conf` instance alongside `config.json`). The record captures profile ID, provider, start/end timestamps, duration in milliseconds, and the process exit code.
+
+Recording happens in the `finally` block of `launchCommand`, before temp-home cleanup, so a session is always recorded regardless of how the `claude` process exits. The store is capped at 200 sessions (oldest pruned on insert).
+
+`flip-cc stats` reads the store and displays per-profile aggregates with a 30-day window focus. `flip-cc stats --clear` removes all or per-profile records.
 
 ---
 

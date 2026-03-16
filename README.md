@@ -8,6 +8,7 @@
 - **Profile-Based:** Unlimited named profiles, each with its own provider, model, and credentials
 - **Auth Conflict Prevention:** Isolated home directories prevent claude.ai session tokens from conflicting with API keys
 - **MCP Server Support:** Preserves MCP connections (Figma, etc.) across all launch modes
+- **Session Stats:** Track time spent per profile with `flip-cc stats`
 - **Zero Latency:** Direct launcher — no proxy, no added overhead
 - **Standalone Binary:** No Node.js required
 
@@ -43,7 +44,11 @@ flip-cc profile edit <id>
 flip-cc profile remove <id>
 flip-cc profile set-default <id>
 
-# 5. Configure VSCode extension
+# 5. View session statistics
+flip-cc stats
+flip-cc stats kimi
+
+# 6. Configure VSCode extension
 flip-cc vscode-config
 ```
 

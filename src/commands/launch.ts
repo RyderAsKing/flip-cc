@@ -3,6 +3,7 @@ import { join, delimiter } from 'path';
 import chalk from 'chalk';
 import { getConfig, needsMigration, migrateToProfiles } from '../lib/config.js';
 import { spawnWithInheritance } from '../lib/spawn.js';
+import { addSession } from '../lib/stats.js';
 import { validateProfileReady } from '../lib/validate.js';
 import { getProfile, getDefaultProfileId, initializeDefaultProfiles } from '../lib/profiles.js';
 import { needsProxy, startProxy, type ProxyHandle } from '../lib/proxy.js';
@@ -186,13 +187,26 @@ export async function launchCommand(profileId: string, options: LaunchOptions): 
     originalRealClaudeJson = patchRealClaudeJsonApproved(isolatedHomeKey);
   }
 
+  const startedAt = new Date();
+  let exitCode: number = 1;
   try {
-    await spawnWithInheritance('claude', [], {
+    exitCode = await spawnWithInheritance('claude', [], {
       envOverrides: Object.keys(envOverrides).length > 0 ? envOverrides : undefined,
     });
-  } catch (error) {
-    process.exit(1);
+  } catch {
+    exitCode = 1;
   } finally {
+    const endedAt = new Date();
+    addSession({
+      profileId: profile.id,
+      profileName: profile.name,
+      provider: profile.provider,
+      startedAt: startedAt.toISOString(),
+      endedAt: endedAt.toISOString(),
+      durationMs: endedAt.getTime() - startedAt.getTime(),
+      exitCode,
+    });
+
     // Restore real ~/.claude.json to its original state
     if (isolatedHomeKey) {
       restoreRealClaudeJson(originalRealClaudeJson);
@@ -212,5 +226,6 @@ export async function launchCommand(profileId: string, options: LaunchOptions): 
         );
       }
     }
+    if (exitCode !== 0) process.exit(exitCode);
   }
 }

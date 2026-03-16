@@ -5,6 +5,7 @@ import chalk from 'chalk';
 import { setupCommand } from './commands/setup/index.js';
 import { launchCommand } from './commands/launch.js';
 import { vscodeShimCommand } from './commands/vscode-config.js';
+import { statsCommand } from './commands/stats.js';
 import {
   profileListCommand,
   profileAddCommand,
@@ -57,6 +58,20 @@ program
       await vscodeShimCommand(options);
     } catch (error) {
       console.error(chalk.red('vscode-config failed:'), error instanceof Error ? error.message : error);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('stats')
+  .description('Show session and usage statistics')
+  .argument('[profile]', 'Filter by profile ID')
+  .option('--clear', 'Clear statistics')
+  .action(async (profileId, options) => {
+    try {
+      await statsCommand(profileId, options);
+    } catch (error) {
+      console.error(chalk.red('Stats failed:'), error instanceof Error ? error.message : error);
       process.exit(1);
     }
   });

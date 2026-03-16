@@ -33,12 +33,14 @@ src/
 ├── commands/
 │   ├── setup.ts            # Interactive setup wizard
 │   ├── launch.ts           # Environment isolation and process spawning
+│   ├── stats.ts            # Session statistics display command
 │   ├── vscode-config.ts    # VSCode settings.json manipulation
 │   └── profile.ts          # Profile CRUD operations
 └── lib/
     ├── config.ts           # Configuration storage (conf library)
     ├── profiles.ts         # Profile management utilities
     ├── spawn.ts            # Child process spawning with stdio inheritance
+    ├── stats.ts            # Session stats persistence (Conf-based)
     └── validate.ts         # Input validation utilities
 ```
 
@@ -52,7 +54,8 @@ src/
 6. Environment overrides are built based on provider type
 7. Isolated home directory is created if using API key mode
 8. `claude` process is spawned with modified environment
-9. Cleanup runs when process exits (temp home removal)
+9. Session record is saved to `stats.json` (profile, duration, exit code)
+10. Cleanup runs when process exits (temp home removal)
 
 ---
 
@@ -82,6 +85,30 @@ Profiles are stored in the `conf` library's configuration file:
 - **macOS:** `~/Library/Preferences/flip-cc-nodejs/config.json`
 - **Linux:** `~/.config/flip-cc-nodejs/config.json`
 - **Windows:** `%APPDATA%/flip-cc-nodejs/config.json`
+
+### Session Stats Storage
+
+Session statistics are stored in a separate file alongside `config.json`:
+
+- **macOS:** `~/Library/Preferences/flip-cc-nodejs/stats.json`
+- **Linux:** `~/.config/flip-cc-nodejs/stats.json`
+- **Windows:** `%APPDATA%/flip-cc-nodejs/stats.json`
+
+```typescript
+interface SessionRecord {
+  profileId: string;       // Profile ID used for the session
+  profileName: string;     // Display name at time of session
+  provider: ProviderType;  // Provider type
+  startedAt: string;       // ISO 8601 timestamp
+  endedAt: string;         // ISO 8601 timestamp
+  durationMs: number;      // Duration in milliseconds
+  exitCode: number | null; // Process exit code
+}
+
+interface StatsData {
+  sessions: SessionRecord[];  // Rolling window, max 200 entries
+}
+```
 
 Example configuration:
 ```json

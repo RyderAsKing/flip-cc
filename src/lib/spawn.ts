@@ -11,13 +11,13 @@ export interface SpawnOptions {
  * @param command - The command to spawn
  * @param args - Arguments for the command
  * @param options - Spawn options including env overrides
- * @returns Promise that resolves on exit code 0, rejects otherwise
+ * @returns Promise that resolves with the exit code
  */
 export function spawnWithInheritance(
   command: string,
   args: string[] = [],
   options: SpawnOptions = {}
-): Promise<void> {
+): Promise<number> {
   return new Promise((resolve, reject) => {
     let env: NodeJS.ProcessEnv = {};
     // Explicitly copy process.env key-by-key to avoid Bun proxy behaviour
@@ -76,11 +76,7 @@ export function spawnWithInheritance(
       process.off('SIGINT', signalHandler);
       process.off('SIGTERM', signalHandler);
 
-      if (code === 0) {
-        resolve();
-      } else {
-        reject(new Error(`Process exited with code ${code ?? 'unknown'}`));
-      }
+      resolve(code ?? 1);
     });
 
     child.on('error', (err) => {
