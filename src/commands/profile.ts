@@ -152,7 +152,14 @@ export async function profileAddCommand(): Promise<void> {
       message: 'Base URL (e.g. https://api.groq.com/openai/v1):',
       validate: (value) => {
         if (!value || value.trim().length === 0) return 'Base URL is required';
-        if (!value.startsWith('http')) return 'Base URL must start with http:// or https://';
+        if (!value.startsWith('http://') && !value.startsWith('https://')) {
+          return 'Base URL must start with http:// or https://';
+        }
+        try {
+          new URL(value);
+        } catch {
+          return 'Base URL is not a valid URL';
+        }
         return true;
       },
     });

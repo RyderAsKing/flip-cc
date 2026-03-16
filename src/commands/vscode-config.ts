@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'fs';
-import { join, dirname, resolve } from 'path';
+import { join, dirname, resolve, relative, isAbsolute } from 'path';
 import { maskApiKey, getProviderDisplay } from '../lib/utils.js';
 import { confirm, select } from '@inquirer/prompts';
 import chalk from 'chalk';
@@ -27,7 +27,8 @@ function getVSCodeSettingsPath(): string {
     settingsPath = resolve(join(home, '.config', 'Code', 'User', 'settings.json'));
   }
 
-  if (!settingsPath.startsWith(expectedBase + '/') && settingsPath !== expectedBase) {
+  const rel = relative(expectedBase, settingsPath);
+  if (isAbsolute(rel) || rel.startsWith('..')) {
     throw new Error(
       `VSCode settings path "${settingsPath}" is outside the expected base directory "${expectedBase}". ` +
         'Check your HOME or APPDATA environment variable for path traversal.'

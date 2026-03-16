@@ -127,9 +127,13 @@ async function convertStreamAsync(
  */
 function makeHandler(profile: Profile, authToken: string) {
   return async function handler(req: Request): Promise<Response> {
-    // Verify per-session bearer token to guard against DNS rebinding / local process snooping.
+    // Verify per-session token to guard against DNS rebinding / local process snooping.
+    // Anthropic SDK sends the API key as x-api-key; some clients use Authorization: Bearer.
+    const xApiKey = req.headers.get('x-api-key');
     const authHeader = req.headers.get('Authorization');
-    if (!authHeader || authHeader !== `Bearer ${authToken}`) {
+    const tokenMatch =
+      xApiKey === authToken || authHeader === `Bearer ${authToken}`;
+    if (!tokenMatch) {
       return new Response('Unauthorized', { status: 401 });
     }
 
@@ -296,7 +300,9 @@ export async function startProxy(profile: Profile): Promise<ProxyHandle> {
   });
 
   const actualPort = server.port ?? 0;
-  const baseUrl = `http://localhost:${actualPort}`;
+  // Use 127.0.0.1 explicitly — localhost may resolve to ::1 on some systems
+  // but the server only binds to the IPv4 loopback address.
+  const baseUrl = `http://127.0.0.1:${actualPort}`;
 
   return {
     port: actualPort,

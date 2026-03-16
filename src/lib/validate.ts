@@ -66,9 +66,14 @@ export function validateProfile(profile: Profile): string | true {
     return keyValidation;
   }
 
-  // openai-compatible profiles also require a baseUrl
-  if (profile.provider === 'openai-compatible' && !profile.baseUrl) {
-    return 'openai-compatible profiles require a base URL (e.g. https://api.groq.com/openai/v1)';
+  // openai-compatible profiles also require a baseUrl and model
+  if (profile.provider === 'openai-compatible') {
+    if (!profile.baseUrl) {
+      return 'openai-compatible profiles require a base URL (e.g. https://api.groq.com/openai/v1)';
+    }
+    if (!profile.model || profile.model.trim().length === 0) {
+      return 'openai-compatible profiles require a model name to avoid forwarding Claude model IDs upstream';
+    }
   }
 
   return true;

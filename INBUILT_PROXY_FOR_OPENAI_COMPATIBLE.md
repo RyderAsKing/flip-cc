@@ -165,7 +165,7 @@ Tool call arguments arrive as string fragments across chunks. The proxy accumula
 | Upstream 4xx/5xx | Body wrapped in `{type:"error",error:{type:"api_error",message}}` |
 | Conversion failure | HTTP 500 with Anthropic error envelope; logged to stderr |
 | Network / timeout | 120 s default timeout via `AbortSignal.timeout(120_000)` |
-| Port conflict | `findFreePort()` retries up to 5 times before throwing |
+| Port conflict | Avoided — `Bun.serve({ port: 0 })` lets the OS assign a free port atomically |
 
 ---
 
@@ -187,5 +187,4 @@ warning and exit without writing settings.
 | Multiple tool calls in one response | Each gets its own `content_block_start/stop` pair |
 | Image content in messages | Base64 converted to `data:` URL format |
 | `top_k` parameter | Silently dropped |
-| Provider returns tokens in headers | Parse `x-ratelimit-*` headers as fallback for usage |
 | Non-standard `finish_reason` | Maps to `end_turn` as safe default |
