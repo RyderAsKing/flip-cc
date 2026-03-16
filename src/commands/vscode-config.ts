@@ -280,6 +280,15 @@ export async function vscodeShimCommand(options: VscodeShimOptions): Promise<voi
     process.exit(1);
   }
 
+  // Bootstrap ~/.claude/ on fresh systems so VSCode doesn't trigger onboarding
+  if (disableLogin) {
+    const realClaudeDir = join(getHomeDir(), '.claude');
+    if (!existsSync(realClaudeDir)) {
+      mkdirSync(realClaudeDir, { recursive: true });
+      writeFileSync(join(realClaudeDir, '.credentials.json'), '{}', { mode: 0o600 });
+    }
+  }
+
   // Clean up any legacy PATH shim silently
   removeLegacyShim();
 

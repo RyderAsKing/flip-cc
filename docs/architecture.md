@@ -167,19 +167,29 @@ envOverrides['PATH'] = `${tempHome}/.local/bin${delimiter}${process.env.PATH}`;
 envOverrides['USERPROFILE'] = tempHome;  // Windows only
 ```
 
+### Fresh system handling
+
+On a completely fresh system where `~/.claude/` does not yet exist (no prior Claude Code installation), flip-cc ensures Claude Code does not trigger its first-run onboarding prompts:
+
+- **`setupClaudeDir()`** always creates `~/.claude/` and an empty `.credentials.json` (`{}`) in the isolated home, even when there is no real `~/.claude/` to copy from. Claude Code uses the presence of this directory and credentials file to determine whether it is a first run.
+- **`setupClaudeJsonConfig()`** sets `hasCompletedOnboarding: true` in the isolated `~/.claude.json`, suppressing onboarding dialogs.
+- **`vscode-config` command** bootstraps `~/.claude/` and `.credentials.json` in the **real** `$HOME` when configuring API key mode, since the VSCode extension does not use an isolated home directory.
+
 **Cleanup**
 
 After the `claude` child process exits (for any reason, including SIGINT), the temp directory is removed with `rmSync(isolatedHome, { recursive: true, force: true })` inside a `finally` block. A warning is printed to stderr if cleanup fails, since an abandoned temp directory may contain copies of `~/.claude/` configuration files.
 
 ### Temp directory structure
 
+This structure is always created, even on fresh systems where `~/.claude/` does not exist. On fresh systems, `.claude/` contains only the empty `.credentials.json` and `.claude.json` contains the onboarding flag and key approval.
+
 ```
 /tmp/.fcc-XXXXXX/           [chmod 700]
-├── .claude.json             # Copied from ~; API key pre-approved
+├── .claude.json             # Copied from ~; API key pre-approved; hasCompletedOnboarding
 ├── .claude/
-│   ├── settings.json        # Copied from ~/.claude/
-│   ├── themes/              # Copied from ~/.claude/
-│   └── .credentials.json    # Generated; mcpOAuth + organizationUuid only
+│   ├── settings.json        # Copied from ~/.claude/ (if exists)
+│   ├── themes/              # Copied from ~/.claude/ (if exists)
+│   └── .credentials.json    # Generated; mcpOAuth + organizationUuid only (or {} on fresh systems)
 └── .local/
     └── bin/
         └── claude           # Symlink → /usr/local/bin/claude (or wherever)

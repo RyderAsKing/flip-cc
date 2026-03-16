@@ -96,6 +96,8 @@ export function setupClaudeJsonConfig(realHome: string, tempHome: string, apiKey
       approved.push(fp);
     }
     claudeConfig.customApiKeyResponses = { ...responses, approved };
+    // Suppress first-run onboarding prompts for fresh systems
+    claudeConfig.hasCompletedOnboarding = true;
     writeFileSync(tempMainConfigFile, JSON.stringify(claudeConfig, null, 2));
     debug('isolated-home', 'Patched temp .claude.json with key fingerprint');
   } catch (err) {
@@ -111,53 +113,60 @@ export function setupClaudeDir(realHome: string, tempHome: string): void {
   const realClaudeDir = join(realHome, '.claude');
   const tempClaudeDir = join(tempHome, '.claude');
 
-  if (!existsSync(realClaudeDir)) return;
-
+  // Always create .claude/ in isolated home (even on fresh systems)
   mkdirSync(tempClaudeDir, { recursive: true });
 
-  const entries = readdirSync(realClaudeDir, { withFileTypes: true });
-  for (const entry of entries) {
-    const srcPath = join(realClaudeDir, entry.name);
-    const destPath = join(tempClaudeDir, entry.name);
+  if (existsSync(realClaudeDir)) {
+    const entries = readdirSync(realClaudeDir, { withFileTypes: true });
+    for (const entry of entries) {
+      const srcPath = join(realClaudeDir, entry.name);
+      const destPath = join(tempClaudeDir, entry.name);
 
-    if (entry.name === '.credentials.json') {
-      continue;
+      if (entry.name === '.credentials.json') {
+        continue;
+      }
+
+      try {
+        if (entry.isDirectory()) {
+          cpSync(srcPath, destPath, { recursive: true, force: true, dereference: false });
+        } else {
+          cpSync(srcPath, destPath, { force: true, dereference: false });
+        }
+      } catch (err) {
+        warn('isolated-home', `Failed to copy ${entry.name}: ${err instanceof Error ? err.message : String(err)}`);
+      }
     }
 
-    try {
-      if (entry.isDirectory()) {
-        cpSync(srcPath, destPath, { recursive: true, force: true, dereference: false });
-      } else {
-        cpSync(srcPath, destPath, { force: true, dereference: false });
+    // Copy only MCP OAuth from credentials file (not claude.ai session)
+    const credsFile = join(realClaudeDir, '.credentials.json');
+    if (existsSync(credsFile)) {
+      try {
+        const credsContent = readFileSync(credsFile, 'utf-8');
+        const creds = JSON.parse(credsContent);
+        const filteredCreds: Record<string, unknown> = {};
+        if (creds.mcpOAuth) {
+          filteredCreds.mcpOAuth = creds.mcpOAuth;
+        }
+        if (creds.organizationUuid) {
+          filteredCreds.organizationUuid = creds.organizationUuid;
+        }
+        if (Object.keys(filteredCreds).length > 0) {
+          writeFileSync(
+            join(tempClaudeDir, '.credentials.json'),
+            JSON.stringify(filteredCreds, null, 2)
+          );
+        }
+        debug('isolated-home', 'Filtered credentials copied');
+      } catch (err) {
+        warn('isolated-home', `Failed to parse credentials file: ${err instanceof Error ? err.message : String(err)}`);
       }
-    } catch (err) {
-      warn('isolated-home', `Failed to copy ${entry.name}: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
-  // Copy only MCP OAuth from credentials file (not claude.ai session)
-  const credsFile = join(realClaudeDir, '.credentials.json');
-  if (existsSync(credsFile)) {
-    try {
-      const credsContent = readFileSync(credsFile, 'utf-8');
-      const creds = JSON.parse(credsContent);
-      const filteredCreds: Record<string, unknown> = {};
-      if (creds.mcpOAuth) {
-        filteredCreds.mcpOAuth = creds.mcpOAuth;
-      }
-      if (creds.organizationUuid) {
-        filteredCreds.organizationUuid = creds.organizationUuid;
-      }
-      if (Object.keys(filteredCreds).length > 0) {
-        writeFileSync(
-          join(tempClaudeDir, '.credentials.json'),
-          JSON.stringify(filteredCreds, null, 2)
-        );
-      }
-      debug('isolated-home', 'Filtered credentials copied');
-    } catch (err) {
-      warn('isolated-home', `Failed to parse credentials file: ${err instanceof Error ? err.message : String(err)}`);
-    }
+  // Ensure .credentials.json always exists (prevents first-run detection)
+  const tempCredsFile = join(tempClaudeDir, '.credentials.json');
+  if (!existsSync(tempCredsFile)) {
+    writeFileSync(tempCredsFile, '{}');
   }
 }
 
