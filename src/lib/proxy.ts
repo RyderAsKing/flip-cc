@@ -167,13 +167,14 @@ function makeHandler(profile: Profile, authToken: string) {
       try {
         openAIReq = anthropicToOpenAI(body, profile.model);
       } catch (err) {
-        console.error('[flip-cc proxy] Conversion error:', err instanceof Error ? err.message : String(err));
+        const detail = err instanceof Error ? err.message : String(err);
+        console.error('[flip-cc proxy] Conversion error:', detail);
         return Response.json(
           {
             type: 'error',
             error: {
               type: 'api_error',
-              message: 'Request processing failed',
+              message: `Request conversion failed: ${detail}`,
             },
           },
           { status: 500 }
@@ -194,13 +195,14 @@ function makeHandler(profile: Profile, authToken: string) {
           signal: AbortSignal.timeout(120_000),
         });
       } catch (err) {
-        console.error('[flip-cc proxy] Upstream request error:', err instanceof Error ? err.message : String(err));
+        const detail = err instanceof Error ? err.message : String(err);
+        console.error('[flip-cc proxy] Upstream request error:', detail);
         return Response.json(
           {
             type: 'error',
             error: {
               type: 'api_error',
-              message: 'Request processing failed',
+              message: `Upstream request failed: ${detail}`,
             },
           },
           { status: 502 }
@@ -261,13 +263,14 @@ function makeHandler(profile: Profile, authToken: string) {
         const anthropicRes = openAIToAnthropic(openAIRes, requestedModel);
         return Response.json(anthropicRes);
       } catch (err) {
-        console.error('[flip-cc proxy] Response conversion error:', err instanceof Error ? err.message : String(err));
+        const detail = err instanceof Error ? err.message : String(err);
+        console.error('[flip-cc proxy] Response conversion error:', detail);
         return Response.json(
           {
             type: 'error',
             error: {
               type: 'api_error',
-              message: 'Request processing failed',
+              message: `Response conversion failed: ${detail}`,
             },
           },
           { status: 500 }

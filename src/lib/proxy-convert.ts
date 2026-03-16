@@ -125,7 +125,6 @@ export interface OpenAIRequest {
   tools?: OpenAITool[];
   tool_choice?: OpenAIToolChoice;
   user?: string;
-  [key: string]: unknown;
 }
 
 // ── OpenAI response types ────────────────────────────────────────────────────
@@ -466,7 +465,7 @@ export function openAIToAnthropic(res: OpenAIResponse, requestedModel: string): 
       try {
         input = JSON.parse(tc.function.arguments) as Record<string, unknown>;
       } catch {
-        // Leave as empty object if parse fails
+        console.warn(`[flip-cc proxy] Failed to parse tool call arguments for "${tc.function.name}", using empty object`);
       }
       content.push({
         type: 'tool_use',

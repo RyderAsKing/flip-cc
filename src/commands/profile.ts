@@ -237,13 +237,16 @@ export async function profileAddCommand(): Promise<void> {
       const envValue = await input({
         message: `Value for ${envKey}:`,
         validate: (value) => {
-          if (Buffer.byteLength(value.replace(/\0/g, ''), 'utf8') > 4096) {
+          if (/[\x00-\x08\x0e-\x1f]/.test(value)) {
+            return 'Value must not contain control characters';
+          }
+          if (Buffer.byteLength(value, 'utf8') > 4096) {
             return 'Value must not exceed 4096 bytes';
           }
           return true;
         },
       });
-      extraEnv[envKey] = envValue.replace(/\0/g, '');
+      extraEnv[envKey] = envValue;
 
       addMore = await confirm({
         message: 'Add another environment variable?',

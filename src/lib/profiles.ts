@@ -1,5 +1,6 @@
 import type { Profile, ProviderType } from '../types.js';
 import { getConfig, setConfig } from './config.js';
+import { getProvider } from './providers.js';
 
 /**
  * Default profile configurations for built-in providers.
@@ -63,8 +64,8 @@ export function updateProfile(id: string, updates: Partial<Omit<Profile, 'id'>>)
     throw new Error(`Profile "${id}" not found`);
   }
 
-  // Use type assertion since we know the original profile has a valid id
-  profiles[index] = { ...profiles[index], ...updates } as Profile;
+  const existing = profiles[index]!;
+  profiles[index] = { ...existing, ...updates, id: existing.id };
   setConfig({ profiles });
 }
 
@@ -138,45 +139,21 @@ export function validateProfileId(id: string): boolean {
  * Get provider-specific base URL.
  */
 export function getProviderBaseUrl(provider: ProviderType): string | undefined {
-  switch (provider) {
-    case 'kimi':
-      return 'https://api.kimi.com/coding/';
-    case 'openrouter':
-      return 'https://openrouter.ai/api/v1';
-    case 'openai-compatible':
-      return undefined; // user always provides their own base URL
-    default:
-      return undefined;
-  }
+  return getProvider(provider).defaultBaseUrl;
 }
 
 /**
  * Get provider-specific default model.
  */
 export function getProviderDefaultModel(provider: ProviderType): string | undefined {
-  switch (provider) {
-    case 'kimi':
-      return 'kimi-for-coding';
-    default:
-      return undefined;
-  }
+  return getProvider(provider).defaultModel;
 }
 
 /**
  * Get extra environment variables for a provider.
  */
 export function getProviderExtraEnv(provider: ProviderType): Record<string, string> {
-  switch (provider) {
-    case 'kimi':
-      return { ENABLE_TOOL_SEARCH: 'false' };
-    case 'openrouter':
-      return {
-        HTTP_REFERER: 'https://github.com/flip-cc',
-        X_TITLE: 'flip-cc',
-      };
-    default:
-      return {};
-  }
+  return { ...getProvider(provider).extraEnv };
 }
 
 /**

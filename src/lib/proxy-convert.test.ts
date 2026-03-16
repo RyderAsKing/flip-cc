@@ -313,7 +313,7 @@ describe('anthropicToOpenAI', () => {
       top_k: 40,
     };
     const result = anthropicToOpenAI(req);
-    expect((result as Record<string, unknown>).top_k).toBeUndefined();
+    expect((result as unknown as Record<string, unknown>).top_k).toBeUndefined();
   });
 
   describe('needsMaxCompletionTokens (tested via anthropicToOpenAI)', () => {

@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'fs';
 import { join, dirname, resolve, relative, isAbsolute } from 'path';
-import { maskApiKey, getProviderDisplay } from '../lib/utils.js';
+import { maskApiKey, getProviderDisplay, getHomeDir } from '../lib/utils.js';
 import { confirm, select } from '@inquirer/prompts';
 import chalk from 'chalk';
 import { getProfiles, getProfile, getDefaultProfileId } from '../lib/profiles.js';
@@ -11,7 +11,7 @@ import type { Profile } from '../types.js';
  * Get the VSCode user settings.json path (platform-aware)
  */
 function getVSCodeSettingsPath(): string {
-  const home = process.env.HOME || process.env.USERPROFILE || '/tmp';
+  const home = getHomeDir();
   let settingsPath: string;
   let expectedBase: string;
 

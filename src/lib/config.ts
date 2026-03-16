@@ -1,3 +1,4 @@
+import { existsSync, copyFileSync } from 'fs';
 import Conf from 'conf';
 import type { AppConfig, Profile } from '../types.js';
 
@@ -73,15 +74,14 @@ export function getConfigPath(): string {
  * Backup the current config file before migration.
  */
 function backupConfig(): void {
-  const fs = require('fs');
   const configPath = config.path;
   const backupPath = `${configPath}.backup`;
   try {
-    if (fs.existsSync(configPath)) {
-      fs.copyFileSync(configPath, backupPath);
+    if (existsSync(configPath)) {
+      copyFileSync(configPath, backupPath);
     }
-  } catch {
-    // Ignore backup errors
+  } catch (err) {
+    console.warn(`Warning: Failed to backup config before migration: ${err instanceof Error ? err.message : String(err)}`);
   }
 }
 
