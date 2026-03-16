@@ -56,6 +56,9 @@ function buildEnvVarsFromProfile(profile: Profile): EnvVar[] | null {
   if (profile.provider === 'anthropic' && !profile.apiKey) {
     // Subscription mode: disable extended thinking to prevent errors
     envVars.push({ name: 'CLAUDE_CODE_MAX_THINKING_TOKENS', value: '0' });
+    if (process.env.PATH) {
+      envVars.push({ name: 'PATH', value: process.env.PATH });
+    }
     return envVars;
   }
 
@@ -79,6 +82,13 @@ function buildEnvVarsFromProfile(profile: Profile): EnvVar[] | null {
     for (const [key, value] of Object.entries(profile.extraEnv)) {
       envVars.push({ name: key, value });
     }
+  }
+
+  // Include the current shell PATH so that CLI tools (npm, npx, etc.)
+  // are available to the agent.  GUI-launched VSCode often does not
+  // inherit the full user PATH from shell RC files.
+  if (process.env.PATH) {
+    envVars.push({ name: 'PATH', value: process.env.PATH });
   }
 
   return envVars;
@@ -113,10 +123,49 @@ function usesApiKeyMode(profile: Profile): boolean {
 }
 
 /**
- * Update settings.json using JSON parse/stringify.
- * Always backs up the file first. Warns and skips if the file is not valid JSON.
+ * Strip JSONC features (comments and trailing commas) so the result
+ * is valid JSON parseable by JSON.parse.  Handles:
+ *  - single-line comments  // ...
+ *  - block comments         /* ... * /
+ *  - trailing commas before } or ]
+ * Respects strings (won't strip inside quoted values).
  */
-function updateSettingsFile(settingsPath: string, envVars: EnvVar[], disableLogin = true): void {
+function stripJsonc(text: string): string {
+  let result = '';
+  let i = 0;
+  while (i < text.length) {
+    // String literal — copy verbatim
+    if (text[i] === '"') {
+      let j = i + 1;
+      while (j < text.length && text[j] !== '"') {
+        if (text[j] === '\\') j++; // skip escaped char
+        j++;
+      }
+      result += text.slice(i, j + 1);
+      i = j + 1;
+    // Single-line comment
+    } else if (text[i] === '/' && text[i + 1] === '/') {
+      i = text.indexOf('\n', i);
+      if (i === -1) break;
+    // Block comment
+    } else if (text[i] === '/' && text[i + 1] === '*') {
+      i = text.indexOf('*/', i + 2);
+      if (i === -1) break;
+      i += 2;
+    } else {
+      result += text[i];
+      i++;
+    }
+  }
+  // Remove trailing commas before } or ]
+  return result.replace(/,(\s*[}\]])/g, '$1');
+}
+
+/**
+ * Update settings.json using JSON parse/stringify.
+ * Always backs up the file first. Supports JSONC (comments & trailing commas).
+ */
+function updateSettingsFile(settingsPath: string, envVars: EnvVar[], disableLogin = true): boolean {
   const dir = dirname(settingsPath);
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
 
@@ -131,12 +180,13 @@ function updateSettingsFile(settingsPath: string, envVars: EnvVar[], disableLogi
 
   let parsed: Record<string, unknown>;
   try {
-    parsed = JSON.parse(rawContent) as Record<string, unknown>;
+    parsed = JSON.parse(stripJsonc(rawContent)) as Record<string, unknown>;
   } catch {
-    console.warn(
-      chalk.yellow('Warning: VSCode settings.json is not valid JSON. Skipping write to avoid corruption.'),
+    console.error(
+      chalk.red('Error: VSCode settings.json is not valid JSON. Skipping write to avoid corruption.'),
     );
-    return;
+    console.error(chalk.yellow('Please fix the JSON syntax in: ') + chalk.cyan(settingsPath));
+    return false;
   }
 
   // Remove any previously managed keys
@@ -152,6 +202,7 @@ function updateSettingsFile(settingsPath: string, envVars: EnvVar[], disableLogi
   }
 
   writeFileSync(settingsPath, JSON.stringify(parsed, null, 2) + '\n', { mode: 0o600 });
+  return true;
 }
 
 /**
@@ -274,7 +325,10 @@ export async function vscodeShimCommand(options: VscodeShimOptions): Promise<voi
   const disableLogin = usesApiKeyMode(profile);
 
   try {
-    updateSettingsFile(settingsPath, envVars, disableLogin);
+    const written = updateSettingsFile(settingsPath, envVars, disableLogin);
+    if (!written) {
+      process.exit(1);
+    }
   } catch (error) {
     console.error(chalk.red('\nError updating VSCode settings:'), error instanceof Error ? error.message : error);
     process.exit(1);
@@ -304,6 +358,7 @@ export async function vscodeShimCommand(options: VscodeShimOptions): Promise<voi
     console.log();
     console.log(chalk.bold('Environment variables:'));
     for (const v of envVars) {
+      if (v.name === 'PATH') continue; // too long and not useful to display
       const display = v.name.includes('API_KEY') ? maskApiKey(v.value) : v.value;
       console.log(`  ${v.name}: ${chalk.gray(display)}`);
     }

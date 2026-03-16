@@ -221,6 +221,38 @@ export function restoreRealClaudeJson(originalContent: string | undefined): void
 }
 
 /**
+ * Create minimal shell RC files that re-export the current PATH.
+ *
+ * When Claude Code's agent spawns bash (often as a login shell),
+ * /etc/profile resets PATH to a system default and then sources
+ * ~/.profile to let the user extend it.  Since the isolated home has
+ * no real RC files, PATH additions from tools like nvm, pyenv, cargo,
+ * etc. are lost and commands like `npx` become unavailable.
+ *
+ * Rather than copying the user's full RC files (which can be large,
+ * slow, and reference $HOME-relative paths that don't exist in the
+ * temp directory), we write tiny stub files that just preserve PATH.
+ */
+export function createShellRcStubs(tempHome: string): void {
+  const currentPath = process.env.PATH || '';
+  // Single line that both bash and zsh understand
+  const stub = `export PATH="${currentPath}"\n`;
+
+  // Covers bash login (.profile, .bash_profile) and interactive (.bashrc),
+  // plus zsh login (.zprofile) and interactive (.zshrc, .zshenv).
+  const rcFiles = ['.profile', '.bash_profile', '.bashrc', '.zprofile', '.zshrc', '.zshenv'];
+
+  for (const rcFile of rcFiles) {
+    try {
+      writeFileSync(join(tempHome, rcFile), stub);
+    } catch (err) {
+      warn('isolated-home', `Failed to write ${rcFile}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+  debug('isolated-home', 'Created shell RC stubs to preserve PATH');
+}
+
+/**
  * Creates an isolated home directory for API key mode.
  */
 export function createIsolatedHomeForApiKey(apiKey: string): string {
@@ -229,5 +261,6 @@ export function createIsolatedHomeForApiKey(apiKey: string): string {
   setupLocalBinSymlink(tempHome);
   setupClaudeJsonConfig(realHome, tempHome, apiKey);
   setupClaudeDir(realHome, tempHome);
+  createShellRcStubs(tempHome);
   return tempHome;
 }
