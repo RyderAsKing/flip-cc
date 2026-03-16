@@ -60,10 +60,19 @@ function setupLocalBinSymlink(tempHome: string): void {
   }
 }
 
+/**
+ * Claude Code identifies API keys by their last 20 characters (internal `CT` function).
+ * We must store the same truncated form so the approved-list lookup matches.
+ */
+function keyFingerprint(apiKey: string): string {
+  return apiKey.slice(-20);
+}
+
 function setupClaudeJsonConfig(realHome: string, tempHome: string, apiKey: string): void {
   // Copy main config file and pre-approve the API key so Claude Code skips
   // the "Detected a custom API key in your environment" interactive prompt.
-  // Claude Code tracks approved keys in ~/.claude.json under customApiKeyResponses.approved.
+  // Claude Code tracks approved keys in ~/.claude.json under customApiKeyResponses.approved
+  // using only the last 20 characters of the key as an identifier.
   const mainConfigFile = join(realHome, '.claude.json');
   const tempMainConfigFile = join(tempHome, '.claude.json');
   if (existsSync(mainConfigFile)) {
@@ -73,7 +82,8 @@ function setupClaudeJsonConfig(realHome: string, tempHome: string, apiKey: strin
       // Ignore copy errors
     }
   }
-  // Inject the API key into the approved list (write file whether or not original existed)
+  // Inject the key fingerprint into the approved list (write file whether or not original existed)
+  const fp = keyFingerprint(apiKey);
   try {
     let claudeConfig: Record<string, unknown> = {};
     if (existsSync(tempMainConfigFile)) {
@@ -81,8 +91,8 @@ function setupClaudeJsonConfig(realHome: string, tempHome: string, apiKey: strin
     }
     const responses = (claudeConfig.customApiKeyResponses ?? {}) as Record<string, unknown>;
     const approved = Array.isArray(responses.approved) ? responses.approved as string[] : [];
-    if (!approved.includes(apiKey)) {
-      approved.push(apiKey);
+    if (!approved.includes(fp)) {
+      approved.push(fp);
     }
     claudeConfig.customApiKeyResponses = { ...responses, approved };
     writeFileSync(tempMainConfigFile, JSON.stringify(claudeConfig, null, 2));
@@ -147,6 +157,61 @@ function setupClaudeDir(realHome: string, tempHome: string): void {
         // Ignore credentials parsing errors
       }
     }
+  }
+}
+
+/**
+ * Patches the real ~/.claude.json to pre-approve an API key, removing it from the
+ * rejected list if present. Returns the original file content for later restoration,
+ * or undefined if the file did not exist before patching.
+ *
+ * This is a belt-and-suspenders complement to setupClaudeJsonConfig: even if Claude
+ * Code resolves its config path through a mechanism that bypasses the $HOME override
+ * (e.g. getpwuid or a cached path), the key will still be approved.
+ */
+function patchRealClaudeJsonApproved(apiKey: string): string | undefined {
+  const realHome = process.env.HOME || process.env.USERPROFILE || tmpdir();
+  const configFile = join(realHome, '.claude.json');
+  let original: string | undefined;
+  try {
+    if (existsSync(configFile)) {
+      original = readFileSync(configFile, 'utf-8');
+    }
+    let config: Record<string, unknown> = {};
+    if (original) {
+      config = JSON.parse(original);
+    }
+    const fp = keyFingerprint(apiKey);
+    const responses = (config.customApiKeyResponses ?? {}) as Record<string, unknown>;
+    const approved = Array.isArray(responses.approved) ? [...(responses.approved as string[])] : [];
+    if (!approved.includes(fp)) {
+      approved.push(fp);
+    }
+    // Remove from rejected list if present (Claude Code uses "rejected", not "denied")
+    const rejected = Array.isArray(responses.rejected)
+      ? (responses.rejected as string[]).filter((k) => k !== fp)
+      : [];
+    config.customApiKeyResponses = { ...responses, approved, rejected };
+    writeFileSync(configFile, JSON.stringify(config, null, 2));
+  } catch {
+    // Ignore — worst case the dialog appears
+  }
+  return original;
+}
+
+/**
+ * Restores the real ~/.claude.json to its prior state after a launch completes.
+ * Pass the value returned by patchRealClaudeJsonApproved.
+ */
+function restoreRealClaudeJson(originalContent: string | undefined): void {
+  const realHome = process.env.HOME || process.env.USERPROFILE || tmpdir();
+  const configFile = join(realHome, '.claude.json');
+  try {
+    if (originalContent !== undefined) {
+      writeFileSync(configFile, originalContent);
+    }
+  } catch {
+    // Ignore restore errors
   }
 }
 
@@ -336,6 +401,14 @@ export async function launchCommand(profileId: string, options: LaunchOptions): 
     console.log(chalk.blue(`Launching Claude Code with ${profile.name}...`));
   }
 
+  // Belt-and-suspenders: also patch the real ~/.claude.json so the API key is
+  // pre-approved even if Claude Code resolves its config path via getpwuid or
+  // a cached mechanism that bypasses the $HOME env var override.
+  let originalRealClaudeJson: string | undefined;
+  if (isolatedHomeKey) {
+    originalRealClaudeJson = patchRealClaudeJsonApproved(isolatedHomeKey);
+  }
+
   try {
     // Spawn claude command
     await spawnWithInheritance('claude', [], {
@@ -345,6 +418,10 @@ export async function launchCommand(profileId: string, options: LaunchOptions): 
     // Error is already logged by spawn, just exit with error code
     process.exit(1);
   } finally {
+    // Restore real ~/.claude.json to its original state
+    if (isolatedHomeKey) {
+      restoreRealClaudeJson(originalRealClaudeJson);
+    }
     // Stop proxy if it was started
     if (proxyHandle) {
       await proxyHandle.stop().catch(() => {/* ignore cleanup errors */});

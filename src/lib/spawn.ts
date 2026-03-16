@@ -19,9 +19,13 @@ export function spawnWithInheritance(
   options: SpawnOptions = {}
 ): Promise<void> {
   return new Promise((resolve, reject) => {
-    let env = process.env;
+    let env: NodeJS.ProcessEnv = {};
+    // Explicitly copy process.env key-by-key to avoid Bun proxy behaviour
+    // where spreading may not produce a true plain-object snapshot.
+    for (const [k, v] of Object.entries(process.env)) {
+      if (v !== undefined) env[k] = v;
+    }
     if (options.envOverrides) {
-      env = { ...process.env };
       for (const [key, value] of Object.entries(options.envOverrides)) {
         if (value === undefined) {
           delete env[key];
