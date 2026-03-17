@@ -6,6 +6,7 @@ import { spawnWithInheritance } from '../lib/spawn.js';
 import { addSession } from '../lib/stats.js';
 import { validateProfileReady } from '../lib/validate.js';
 import { getProfile, getDefaultProfileId, initializeDefaultProfiles } from '../lib/profiles.js';
+import { getProvider } from '../lib/providers.js';
 import { needsProxy, startProxy, type ProxyHandle } from '../lib/proxy.js';
 import { createIsolatedHomeForApiKey, patchRealClaudeJsonApproved, restoreRealClaudeJson } from '../lib/isolated-home.js';
 import { debug } from '../lib/logger.js';
@@ -55,7 +56,12 @@ function buildEnvOverrides(profile: Profile, options: LaunchOptions): Record<str
       envOverrides['ANTHROPIC_MODEL'] = profile.model;
     }
   } else {
-    envOverrides['ANTHROPIC_API_KEY'] = profile.apiKey || undefined;
+    const providerConfig = getProvider(profile.provider);
+    const keyEnvVar = providerConfig.apiKeyEnvVar ?? 'ANTHROPIC_API_KEY';
+    envOverrides[keyEnvVar] = profile.apiKey || undefined;
+    if (keyEnvVar !== 'ANTHROPIC_API_KEY') {
+      envOverrides['ANTHROPIC_API_KEY'] = undefined;
+    }
 
     if (profile.baseUrl) {
       envOverrides['ANTHROPIC_BASE_URL'] = profile.baseUrl;

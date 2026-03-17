@@ -78,6 +78,11 @@ export async function profileAddCommand(): Promise<void> {
         description: 'Moonshot Kimi 2.5 API',
       },
       {
+        name: 'MiniMax M2.5',
+        value: 'minimax',
+        description: 'MiniMax coding model (International or China endpoint)',
+      },
+      {
         name: 'OpenRouter',
         value: 'openrouter',
         description: 'Access multiple models through OpenRouter',
@@ -170,6 +175,20 @@ export async function profileAddCommand(): Promise<void> {
         if (!value || value.trim().length === 0) return 'Model name is required';
         return true;
       },
+    });
+  } else if (provider === 'minimax') {
+    baseUrl = await select<string>({
+      message: 'Select your MiniMax region:',
+      choices: [
+        { value: 'https://api.minimax.io/anthropic', name: 'International (api.minimax.io)' },
+        { value: 'https://api.minimaxi.com/anthropic', name: 'China (api.minimaxi.com)' },
+      ],
+    });
+
+    apiKey = await password({
+      message: 'Enter your MiniMax API key:',
+      mask: '*',
+      validate: (value) => validateApiKey(value, 'minimax'),
     });
   } else {
     // kimi / openrouter

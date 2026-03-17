@@ -40,6 +40,7 @@ function providerDisplay(provider: string): string {
   switch (provider) {
     case 'anthropic': return 'Anthropic';
     case 'kimi': return 'Kimi';
+    case 'minimax': return 'MiniMax';
     case 'openrouter': return 'OpenRouter';
     case 'openai-compatible': return 'OpenAI-compatible';
     default: return provider;

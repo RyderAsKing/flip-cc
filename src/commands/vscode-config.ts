@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'fs';
 import { join, dirname, resolve, relative, isAbsolute } from 'path';
 import { maskApiKey, getProviderDisplay, getHomeDir } from '../lib/utils.js';
+import { getProvider } from '../lib/providers.js';
 import { confirm, select } from '@inquirer/prompts';
 import chalk from 'chalk';
 import { getProfiles, getProfile, getDefaultProfileId } from '../lib/profiles.js';
@@ -64,7 +65,9 @@ function buildEnvVarsFromProfile(profile: Profile): EnvVar[] | null {
 
   // API key mode (all providers including non-Anthropic)
   if (profile.apiKey) {
-    envVars.push({ name: 'ANTHROPIC_API_KEY', value: profile.apiKey });
+    const providerConfig = getProvider(profile.provider);
+    const keyEnvVar = providerConfig.apiKeyEnvVar ?? 'ANTHROPIC_API_KEY';
+    envVars.push({ name: keyEnvVar, value: profile.apiKey });
   }
 
   // Base URL for the provider
@@ -103,6 +106,9 @@ function getBackendDisplayName(profile: Profile): string {
   }
   if (profile.provider === 'kimi') {
     return 'Moonshot Kimi 2.5';
+  }
+  if (profile.provider === 'minimax') {
+    return 'MiniMax M2.5';
   }
   if (profile.provider === 'openrouter') {
     return `OpenRouter${profile.model ? ` (${profile.model.split('/').pop()})` : ''}`;

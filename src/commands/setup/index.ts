@@ -7,11 +7,13 @@ import { configureAnthropic } from './anthropic.js';
 import { configureKimi } from './kimi.js';
 import { configureOpenRouter } from './openrouter.js';
 import { configureOpenAICompatible } from './openai-compatible.js';
+import { configureMinimax } from './minimax.js';
 
 export { configureAnthropic } from './anthropic.js';
 export { configureKimi } from './kimi.js';
 export { configureOpenRouter } from './openrouter.js';
 export { configureOpenAICompatible } from './openai-compatible.js';
+export { configureMinimax } from './minimax.js';
 
 const PROVIDER_CHOICES: { value: ProviderType; name: string; description: string }[] = [
   {
@@ -23,6 +25,11 @@ const PROVIDER_CHOICES: { value: ProviderType; name: string; description: string
     value: 'kimi',
     name: 'Moonshot Kimi 2.5',
     description: 'Kimi coding model via Moonshot API',
+  },
+  {
+    value: 'minimax',
+    name: 'MiniMax M2.5 (International / China endpoint)',
+    description: 'MiniMax coding model via MiniMax API',
   },
   {
     value: 'openrouter',
@@ -108,6 +115,9 @@ export async function setupCommand(): Promise<void> {
           break;
         case 'openai-compatible':
           result = await configureOpenAICompatible();
+          break;
+        case 'minimax':
+          result = await configureMinimax();
           break;
       }
 

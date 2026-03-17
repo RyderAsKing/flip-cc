@@ -7,6 +7,7 @@ export interface ProviderDefinition {
   color: (text: string) => string;
   defaultBaseUrl?: string;
   defaultModel?: string;
+  apiKeyEnvVar?: string;
   requiresModel: boolean;
   requiresBaseUrl: boolean;
   extraEnv: Record<string, string>;
@@ -55,6 +56,24 @@ export const PROVIDERS: Record<ProviderType, ProviderDefinition> = {
     requiresModel: true,
     requiresBaseUrl: true,
     extraEnv: {},
+  },
+  minimax: {
+    name: 'MiniMax',
+    displayName: 'MiniMax',
+    color: chalk.yellow,
+    defaultBaseUrl: 'https://api.minimax.io/anthropic',
+    defaultModel: 'MiniMax-M2.5',
+    apiKeyEnvVar: 'ANTHROPIC_AUTH_TOKEN',
+    requiresModel: false,
+    requiresBaseUrl: false,
+    extraEnv: {
+      API_TIMEOUT_MS: '3000000',
+      CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
+      ANTHROPIC_SMALL_FAST_MODEL: 'MiniMax-M2.5',
+      ANTHROPIC_DEFAULT_SONNET_MODEL: 'MiniMax-M2.5',
+      ANTHROPIC_DEFAULT_HAIKU_MODEL: 'MiniMax-M2.5',
+      ANTHROPIC_DEFAULT_OPUS_MODEL: 'MiniMax-M2.5',
+    },
   },
 } as const;
 

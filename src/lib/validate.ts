@@ -32,6 +32,11 @@ export function validateApiKey(key: string, type: ProviderType): string | true {
     if (key.length < 10) {
       return 'API key seems too short (minimum 10 characters)';
     }
+  } else if (type === 'minimax') {
+    // MiniMax keys: minimum 10 characters
+    if (key.length < 10) {
+      return 'MiniMax API key seems too short (minimum 10 characters)';
+    }
   }
 
   return true;

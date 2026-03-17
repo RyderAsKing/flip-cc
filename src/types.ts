@@ -5,7 +5,8 @@ export type ProviderType =
   | 'anthropic'
   | 'kimi'
   | 'openrouter'
-  | 'openai-compatible';
+  | 'openai-compatible'
+  | 'minimax';
 
 export interface Profile {
   id: string;
