@@ -75,8 +75,8 @@ function buildEnvVarsFromProfile(profile: Profile): EnvVar[] | null {
     envVars.push({ name: 'ANTHROPIC_BASE_URL', value: profile.baseUrl });
   }
 
-  // Model if specified
-  if (profile.model) {
+  // Model if specified, but only if extraEnv doesn't already set ANTHROPIC_MODEL
+  if (profile.model && !profile.extraEnv?.['ANTHROPIC_MODEL']) {
     envVars.push({ name: 'ANTHROPIC_MODEL', value: profile.model });
   }
 
