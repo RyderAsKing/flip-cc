@@ -14,6 +14,7 @@ import {
 import { validateApiKey } from '../lib/validate.js';
 import { getConfig } from '../lib/config.js';
 import { maskApiKey, getProviderDisplay } from '../lib/utils.js';
+import { MINIMAX_MODELS, getMinimaxModelEnv } from '../lib/providers.js';
 
 /**
  * List all profiles.
@@ -73,12 +74,12 @@ export async function profileAddCommand(): Promise<void> {
         description: 'Official Anthropic Claude API or subscription',
       },
       {
-        name: 'Moonshot Kimi',
+        name: 'Moonshot Kimi (K2.5)',
         value: 'kimi',
         description: 'Moonshot Kimi 2.5 API',
       },
       {
-        name: 'MiniMax M2.5',
+        name: 'MiniMax (M2.5 or M2.7)',
         value: 'minimax',
         description: 'MiniMax coding model (International or China endpoint)',
       },
@@ -128,6 +129,7 @@ export async function profileAddCommand(): Promise<void> {
   let baseUrl: string | undefined;
   let model: string | undefined;
   let extraEnv: Record<string, string> | undefined;
+  let minimaxModel: string | undefined;
 
   // Provider-specific configuration
   if (provider === 'anthropic') {
@@ -189,6 +191,11 @@ export async function profileAddCommand(): Promise<void> {
       message: 'Enter your MiniMax API key:',
       mask: '*',
       validate: (value) => validateApiKey(value, 'minimax'),
+    });
+
+    minimaxModel = await select<string>({
+      message: 'Select MiniMax model:',
+      choices: MINIMAX_MODELS,
     });
   } else {
     // kimi / openrouter
@@ -278,6 +285,11 @@ export async function profileAddCommand(): Promise<void> {
   const description = await input({
     message: 'Description (optional):',
   });
+
+  // For minimax, merge model env vars into extraEnv
+  if (provider === 'minimax' && minimaxModel) {
+    extraEnv = { ...extraEnv, ...getMinimaxModelEnv(minimaxModel) };
+  }
 
   // Create and save profile
   const profile = createProfile(id, name, provider, apiKey, {
@@ -386,6 +398,20 @@ export async function profileEditCommand(id?: string): Promise<void> {
     model = newModel || undefined;
   }
 
+  // For minimax profiles, offer model selection
+  let updatedExtraEnv = profile.extraEnv;
+  if (profile.provider === 'minimax') {
+    const currentModel = profile.extraEnv?.ANTHROPIC_MODEL ?? 'MiniMax-M2.5';
+    const newMinimaxModel = await select<string>({
+      message: 'Select MiniMax model:',
+      choices: MINIMAX_MODELS,
+      default: currentModel,
+    });
+    if (newMinimaxModel !== currentModel) {
+      updatedExtraEnv = { ...profile.extraEnv, ...getMinimaxModelEnv(newMinimaxModel) };
+    }
+  }
+
   // Edit description
   const description = await input({
     message: 'Description:',
@@ -398,6 +424,7 @@ export async function profileEditCommand(id?: string): Promise<void> {
     apiKey,
     baseUrl,
     model,
+    extraEnv: updatedExtraEnv,
     description: description || undefined,
   });
 

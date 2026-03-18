@@ -5,6 +5,7 @@ import {
   validateProfileId,
   getProviderExtraEnv,
 } from '../../lib/profiles.js';
+import { MINIMAX_MODELS, getMinimaxModelEnv } from '../../lib/providers.js';
 
 const MINIMAX_REGIONS = [
   { value: 'https://api.minimax.io/anthropic', name: 'International (api.minimax.io)' },
@@ -26,6 +27,11 @@ export async function configureMinimax(): Promise<{ profileId: string; profileNa
     validate: (value) => validateApiKey(value, 'minimax'),
   });
 
+  const model = await select<string>({
+    message: 'Select MiniMax model:',
+    choices: MINIMAX_MODELS,
+  });
+
   const profileId = await input({
     message: 'Profile ID (used in commands):',
     default: 'minimax',
@@ -37,17 +43,21 @@ export async function configureMinimax(): Promise<{ profileId: string; profileNa
     },
   });
 
+  const modelLabel = MINIMAX_MODELS.find((m) => m.value === model)?.name ?? model;
   const profileName = await input({
     message: 'Profile name (display name):',
-    default: 'MiniMax M2.5',
+    default: modelLabel,
   });
+
+  const providerExtraEnv = getProviderExtraEnv('minimax');
+  const modelEnv = getMinimaxModelEnv(model);
 
   return {
     profileId,
     profileName,
     config: createProfile(profileId, profileName, 'minimax', apiKey, {
       baseUrl,
-      extraEnv: getProviderExtraEnv('minimax'),
+      extraEnv: { ...providerExtraEnv, ...modelEnv },
     }),
   };
 }

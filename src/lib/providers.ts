@@ -1,6 +1,21 @@
 import chalk from 'chalk';
 import type { ProviderType } from '../types.js';
 
+export const MINIMAX_MODELS = [
+  { value: 'MiniMax-M2.5', name: 'MiniMax M2.5' },
+  { value: 'MiniMax-M2.7', name: 'MiniMax M2.7 (latest)' },
+];
+
+export function getMinimaxModelEnv(model: string): Record<string, string> {
+  return {
+    ANTHROPIC_MODEL: model,
+    ANTHROPIC_SMALL_FAST_MODEL: model,
+    ANTHROPIC_DEFAULT_SONNET_MODEL: model,
+    ANTHROPIC_DEFAULT_HAIKU_MODEL: model,
+    ANTHROPIC_DEFAULT_OPUS_MODEL: model,
+  };
+}
+
 export interface ProviderDefinition {
   name: string;
   displayName: string;
@@ -69,10 +84,6 @@ export const PROVIDERS: Record<ProviderType, ProviderDefinition> = {
     extraEnv: {
       API_TIMEOUT_MS: '3000000',
       CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
-      ANTHROPIC_SMALL_FAST_MODEL: 'MiniMax-M2.5',
-      ANTHROPIC_DEFAULT_SONNET_MODEL: 'MiniMax-M2.5',
-      ANTHROPIC_DEFAULT_HAIKU_MODEL: 'MiniMax-M2.5',
-      ANTHROPIC_DEFAULT_OPUS_MODEL: 'MiniMax-M2.5',
     },
   },
 } as const;
