@@ -25,7 +25,7 @@ curl -fsSL https://raw.githubusercontent.com/RyderAsKing/flip-cc/main/install.sh
 **Upgrade:**
 
 ```bash
-flip-cc upgrade
+curl -fsSL https://raw.githubusercontent.com/RyderAsKing/flip-cc/main/upgrade.sh | bash
 ```
 
 ![Upgrade](docs/gif/upgrade.gif)
@@ -85,12 +85,12 @@ flip-cc vscode-config
 
 ## Documentation
 
-| Doc | Description |
-| --- | ----------- |
-| [Getting Started](./docs/getting-started.md) | Install, first setup, launch, verify, upgrade/uninstall |
-| [Profiles](./docs/profiles.md) | Profile fields, commands, providers, config paths |
-| [VSCode Integration](./docs/vscode-integration.md) | Configure the Claude Code VSCode extension |
-| [Architecture](./docs/architecture.md) | Internals, environment isolation, adding providers |
+| Doc                                                | Description                                             |
+| -------------------------------------------------- | ------------------------------------------------------- |
+| [Getting Started](./docs/getting-started.md)       | Install, first setup, launch, verify, upgrade/uninstall |
+| [Profiles](./docs/profiles.md)                     | Profile fields, commands, providers, config paths       |
+| [VSCode Integration](./docs/vscode-integration.md) | Configure the Claude Code VSCode extension              |
+| [Architecture](./docs/architecture.md)             | Internals, environment isolation, adding providers      |
 
 ---
 
