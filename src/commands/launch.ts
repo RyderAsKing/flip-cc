@@ -110,7 +110,7 @@ function needsIsolatedHome(profile: Profile, options: LaunchOptions): boolean {
 /**
  * Launch Claude Code with the specified profile.
  */
-export async function launchCommand(profileId: string, options: LaunchOptions): Promise<void> {
+export async function launchCommand(profileId: string | undefined, options: LaunchOptions): Promise<void> {
   // Migrate legacy config if needed
   if (needsMigration()) {
     await migrateToProfiles();
@@ -120,18 +120,20 @@ export async function launchCommand(profileId: string, options: LaunchOptions): 
   initializeDefaultProfiles();
 
   // Resolve profile: if profileId not provided or not found, use default
-  let profile = getProfile(profileId);
+  let profile = profileId ? getProfile(profileId) : undefined;
 
   if (!profile) {
     const defaultId = getDefaultProfileId();
-    if (defaultId && defaultId !== profileId) {
-      console.log(chalk.yellow(`Profile "${profileId}" not found. Using default profile "${defaultId}".`));
+    if (defaultId) {
+      if (profileId && defaultId !== profileId) {
+        console.log(chalk.yellow(`Profile "${profileId}" not found. Using default profile "${defaultId}".`));
+      }
       profile = getProfile(defaultId);
     }
   }
 
   if (!profile) {
-    console.error(chalk.red(`Error: Profile "${profileId}" not found and no default profile set.`));
+    console.error(chalk.red(profileId ? `Error: Profile "${profileId}" not found and no default profile set.` : 'Error: No default profile set.'));
     console.error(chalk.yellow('Run "flip-cc profile list" to see available profiles.'));
     console.error(chalk.yellow('Run "flip-cc setup" to configure profiles.'));
     process.exit(1);

@@ -41,8 +41,7 @@ program
   .option('--key', 'Use API key for Anthropic profiles (subscription mode by default)', false)
   .action(async (profile, options) => {
     try {
-      // Default to 'claude' profile if none specified
-      await launchCommand(profile || 'claude', options);
+      await launchCommand(profile, options);
     } catch (error) {
       console.error(chalk.red('Launch failed:'), error instanceof Error ? error.message : error);
       process.exit(1);
