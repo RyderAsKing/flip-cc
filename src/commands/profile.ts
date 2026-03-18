@@ -41,8 +41,12 @@ export async function profileListCommand(): Promise<void> {
     console.log(`  ${chalk.cyan(profile.id)}${defaultMarker}`);
     console.log(`    Name: ${profile.name}`);
     console.log(`    Provider: ${getProviderDisplay(profile.provider)}`);
-    if (profile.model) {
-      console.log(`    Model: ${chalk.gray(profile.model)}`);
+    const displayModel =
+      profile.provider === 'minimax'
+        ? (profile.extraEnv?.ANTHROPIC_MODEL ?? profile.model)
+        : profile.model;
+    if (displayModel) {
+      console.log(`    Model: ${chalk.gray(displayModel)}`);
     }
     if (profile.baseUrl) {
       console.log(`    Base URL: ${chalk.gray(profile.baseUrl)}`);
@@ -294,7 +298,7 @@ export async function profileAddCommand(): Promise<void> {
   // Create and save profile
   const profile = createProfile(id, name, provider, apiKey, {
     baseUrl: baseUrl || undefined,
-    model: model || undefined,
+    model: model || minimaxModel || undefined,
     extraEnv: extraEnv || undefined,
     description: description || undefined,
   });
