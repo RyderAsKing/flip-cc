@@ -1,82 +1,112 @@
-# 🔀 flip-cc
+# flip-cc
 
-**flip-cc** is a lightweight CLI launcher for Claude Code that enables seamless switching between AI providers—Anthropic, Moonshot Kimi, OpenRouter, and custom OpenAI-compatible endpoints—through a profile-based system. API keys are stored locally and injected per-session; your global environment is never modified.
+**flip-cc** is a lightweight CLI launcher for Claude Code that lets you run multiple AI providers simultaneously. Anthropic, Moonshot Kimi, Minimax, OpenRouter, and custom OpenAI-compatible endpoints—through named profiles. API keys are injected per-session; your global environment is never touched.
 
-## ✨ Key Features
+---
 
-- **Multi-Provider:** Anthropic (subscription or API key), Moonshot Kimi, OpenRouter, any OpenAI-compatible endpoint
-- **Profile-Based:** Unlimited named profiles, each with its own provider, model, and credentials
-- **Auth Conflict Prevention:** Isolated home directories prevent claude.ai session tokens from conflicting with API keys
-- **MCP Server Support:** Preserves MCP connections (Figma, etc.) across all launch modes
-- **Session Stats:** Track time spent per profile with `flip-cc stats`
-- **Zero Latency:** Direct launcher — no proxy, no added overhead
-- **Standalone Binary:** No Node.js required
+## Split Screen: Multiple Providers at Once
 
-## 🚀 Installation
+The main use case — open side-by-side terminals and launch different providers simultaneously with zero key conflicts:
+
+![Split screen with multiple providers](docs/gif/split_screen_claude.gif)
+
+---
+
+## Install & Upgrade
+
+**Install:**
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/RyderAsKing/flip-cc/main/install.sh | bash
 ```
 
-**Manual:** Download the binary for your platform from the [Releases page](https://github.com/RyderAsKing/flip-cc/releases), move it to your PATH, and `chmod +x flip-cc`.
+![Install](docs/gif/install.gif)
 
-**Windows:** Use [WSL](https://learn.microsoft.com/en-us/windows/wsl/install) and run the Linux install command above.
-
-> For full installation, upgrade, and uninstall instructions see [docs/getting-started.md](./docs/getting-started.md).
-
-## ⚡ Quick Start
+**Upgrade:**
 
 ```bash
-# 1. Run the setup wizard
-flip-cc setup
+flip-cc upgrade
+```
 
-# 2. Launch with default profile
-flip-cc launch
+![Upgrade](docs/gif/upgrade.gif)
 
-# 3. Launch a specific profile
-flip-cc launch kimi
-flip-cc launch my-openrouter-profile
+> **Windows:** Use [WSL](https://learn.microsoft.com/en-us/windows/wsl/install) and run the Linux install command above.
+> **Manual:** Download the binary from the [Releases page](https://github.com/RyderAsKing/flip-cc/releases), move it to your PATH, and `chmod +x flip-cc`.
 
-# 4. Manage profiles
-flip-cc profile list
+---
+
+## Usage
+
+### Add a Profile
+
+```bash
 flip-cc profile add
-flip-cc profile edit <id>
-flip-cc profile remove <id>
+```
+
+![Add profile](docs/gif/add_profile.gif)
+
+### List Profiles
+
+```bash
+flip-cc profile list
+```
+
+![List profiles](docs/gif/list_profile.gif)
+
+### Set Default Launch Profile
+
+```bash
 flip-cc profile set-default <id>
+```
 
-# 5. View session statistics
-flip-cc stats
-flip-cc stats kimi
+![Set default launch](docs/gif/set_default_launch.gif)
 
-# 6. Configure VSCode extension
+### Configure VSCode Extension
+
+```bash
 flip-cc vscode-config
 ```
 
-## 📚 Documentation
+![VSCode config](docs/gif/vscode_config.gif)
 
-| Doc                                                      | Description                                                                    |
-| -------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| [Getting Started](./docs/getting-started.md)             | Install, first setup, launch, verify, upgrade/uninstall                        |
-| [Profiles](./docs/profiles.md)                           | Profile fields, commands, providers, config paths, v0.2.x migration            |
-| [VSCode Integration](./docs/vscode-integration.md)       | Configure the Claude Code VSCode extension                                     |
-| [Architecture](./docs/architecture.md)                   | Internals, data flow, environment isolation, proxy, security, adding providers |
-| [Technical Reference](./docs/technical_documentation.md) | Comprehensive developer reference                                              |
+---
 
-## 🔧 Development
+## Features
+
+- **Multi-Provider:** Anthropic (subscription or API key), Moonshot Kimi, Minimax, OpenRouter, any OpenAI-compatible endpoint
+- **Profile-Based:** Unlimited named profiles, each with its own provider, model, and credentials
+- **Auth Conflict Prevention:** Isolated home directories prevent session token conflicts with API keys
+- **MCP Server Support:** Preserves MCP connections (Figma, etc.) across all launch modes
+- **Session Stats:** Track time spent per profile with `flip-cc stats`
+- **Zero Latency:** Direct launcher — no proxy, no added overhead
+- **Standalone Binary:** No Node.js required
+
+---
+
+## Documentation
+
+| Doc | Description |
+| --- | ----------- |
+| [Getting Started](./docs/getting-started.md) | Install, first setup, launch, verify, upgrade/uninstall |
+| [Profiles](./docs/profiles.md) | Profile fields, commands, providers, config paths |
+| [VSCode Integration](./docs/vscode-integration.md) | Configure the Claude Code VSCode extension |
+| [Architecture](./docs/architecture.md) | Internals, environment isolation, adding providers |
+
+---
+
+## Development
 
 ```bash
 bun install
-bun run dev setup       # run in dev mode
-bun run typecheck       # type check
-bun run build           # build all platform binaries
+bun run dev setup
+bun run typecheck
+bun run build
 ```
 
-See [Architecture docs](./docs/architecture.md) for a full developer guide.
-
-## 🤝 Contributing
+## Contributing
 
 Pull requests are welcome. For major changes, please open an issue first.
 
-## 📄 License
+## License
 
 MIT License - Copyright (c) 2026 Rajat Asthana
