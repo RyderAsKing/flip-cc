@@ -6,7 +6,7 @@ import { spawnWithInheritance } from '../lib/spawn.js';
 import { addSession } from '../lib/stats.js';
 import { validateProfileReady } from '../lib/validate.js';
 import { getProfile, getDefaultProfileId, initializeDefaultProfiles } from '../lib/profiles.js';
-import { getProvider } from '../lib/providers.js';
+import { getProvider, getAllModelEnvs } from '../lib/providers.js';
 import { needsProxy, startProxy, type ProxyHandle } from '../lib/proxy.js';
 import { createIsolatedHomeForApiKey, patchRealClaudeJsonApproved, restoreRealClaudeJson } from '../lib/isolated-home.js';
 import { debug } from '../lib/logger.js';
@@ -53,21 +53,23 @@ function buildEnvOverrides(profile: Profile, options: LaunchOptions): Record<str
       envOverrides['ANTHROPIC_BASE_URL'] = profile.baseUrl;
     }
     if (profile.model) {
-      envOverrides['ANTHROPIC_MODEL'] = profile.model;
+      Object.assign(envOverrides, getAllModelEnvs(profile.model));
     }
   } else {
     const providerConfig = getProvider(profile.provider);
     const keyEnvVar = providerConfig.apiKeyEnvVar ?? 'ANTHROPIC_API_KEY';
     envOverrides[keyEnvVar] = profile.apiKey || undefined;
     if (keyEnvVar !== 'ANTHROPIC_API_KEY') {
-      envOverrides['ANTHROPIC_API_KEY'] = undefined;
+      // Must be empty string, not deleted — Claude Code falls back to Anthropic
+      // auth if ANTHROPIC_API_KEY is unset, regardless of other auth env vars.
+      envOverrides['ANTHROPIC_API_KEY'] = '';
     }
 
     if (profile.baseUrl) {
       envOverrides['ANTHROPIC_BASE_URL'] = profile.baseUrl;
     }
     if (profile.model) {
-      envOverrides['ANTHROPIC_MODEL'] = profile.model;
+      Object.assign(envOverrides, getAllModelEnvs(profile.model));
     }
   }
 

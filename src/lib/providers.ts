@@ -6,7 +6,14 @@ export const MINIMAX_MODELS = [
   { value: 'MiniMax-M2.7', name: 'MiniMax M2.7 (latest)' },
 ];
 
-export function getMinimaxModelEnv(model: string): Record<string, string> {
+/**
+ * Returns all Claude Code model env vars pointing to the same model.
+ * Use this whenever overriding the model for a non-Anthropic provider so that
+ * both the main model and the background "small/fast" model are redirected —
+ * otherwise Claude Code falls back to its built-in Haiku/Sonnet defaults for
+ * sub-tasks even when ANTHROPIC_MODEL is set.
+ */
+export function getAllModelEnvs(model: string): Record<string, string> {
   return {
     ANTHROPIC_MODEL: model,
     ANTHROPIC_SMALL_FAST_MODEL: model,
@@ -14,6 +21,11 @@ export function getMinimaxModelEnv(model: string): Record<string, string> {
     ANTHROPIC_DEFAULT_HAIKU_MODEL: model,
     ANTHROPIC_DEFAULT_OPUS_MODEL: model,
   };
+}
+
+/** @deprecated Use getAllModelEnvs instead */
+export function getMinimaxModelEnv(model: string): Record<string, string> {
+  return getAllModelEnvs(model);
 }
 
 export interface ProviderDefinition {
@@ -53,14 +65,12 @@ export const PROVIDERS: Record<ProviderType, ProviderDefinition> = {
     name: 'OpenRouter',
     displayName: 'OpenRouter',
     color: chalk.green,
-    defaultBaseUrl: 'https://openrouter.ai/api/v1',
+    defaultBaseUrl: 'https://openrouter.ai/api',
     defaultModel: undefined,
+    apiKeyEnvVar: 'ANTHROPIC_AUTH_TOKEN',
     requiresModel: false,
     requiresBaseUrl: false,
-    extraEnv: {
-      HTTP_REFERER: 'https://github.com/flip-cc',
-      X_TITLE: 'flip-cc',
-    },
+    extraEnv: {},
   },
   'openai-compatible': {
     name: 'OpenAI-Compatible',

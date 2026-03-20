@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'fs';
 import { join, dirname, resolve, relative, isAbsolute } from 'path';
 import { maskApiKey, getProviderDisplay, getHomeDir } from '../lib/utils.js';
-import { getProvider } from '../lib/providers.js';
+import { getProvider, getAllModelEnvs } from '../lib/providers.js';
 import { confirm, select } from '@inquirer/prompts';
 import chalk from 'chalk';
 import { getProfiles, getProfile, getDefaultProfileId } from '../lib/profiles.js';
@@ -68,6 +68,11 @@ function buildEnvVarsFromProfile(profile: Profile): EnvVar[] | null {
     const providerConfig = getProvider(profile.provider);
     const keyEnvVar = providerConfig.apiKeyEnvVar ?? 'ANTHROPIC_API_KEY';
     envVars.push({ name: keyEnvVar, value: profile.apiKey });
+    if (keyEnvVar !== 'ANTHROPIC_API_KEY') {
+      // Must be empty string, not absent — Claude Code falls back to Anthropic
+      // auth if ANTHROPIC_API_KEY is unset, regardless of other auth env vars.
+      envVars.push({ name: 'ANTHROPIC_API_KEY', value: '' });
+    }
   }
 
   // Base URL for the provider
@@ -75,9 +80,14 @@ function buildEnvVarsFromProfile(profile: Profile): EnvVar[] | null {
     envVars.push({ name: 'ANTHROPIC_BASE_URL', value: profile.baseUrl });
   }
 
-  // Model if specified, but only if extraEnv doesn't already set ANTHROPIC_MODEL
+  // Model if specified, but only if extraEnv doesn't already set ANTHROPIC_MODEL.
+  // Set all model-related env vars so background/sub-task models (ANTHROPIC_SMALL_FAST_MODEL,
+  // ANTHROPIC_DEFAULT_*_MODEL) also point to the chosen model instead of falling back to
+  // Claude Code's built-in Haiku/Sonnet defaults.
   if (profile.model && !profile.extraEnv?.['ANTHROPIC_MODEL']) {
-    envVars.push({ name: 'ANTHROPIC_MODEL', value: profile.model });
+    for (const [key, value] of Object.entries(getAllModelEnvs(profile.model))) {
+      envVars.push({ name: key, value });
+    }
   }
 
   // Extra environment variables from profile
@@ -198,6 +208,8 @@ function updateSettingsFile(settingsPath: string, envVars: EnvVar[], disableLogi
   // Remove any previously managed keys
   delete parsed['claudeCode.environmentVariables'];
   delete parsed['claudeCode.disableLoginPrompt'];
+  // Clear selectedModel so it doesn't override ANTHROPIC_MODEL env var
+  delete parsed['claudeCode.selectedModel'];
 
   // Re-insert if we have env vars to write
   if (envVars.length > 0) {
@@ -217,6 +229,55 @@ function updateSettingsFile(settingsPath: string, envVars: EnvVar[], disableLogi
 function removeSettings(settingsPath: string): void {
   if (!existsSync(settingsPath)) return;
   updateSettingsFile(settingsPath, []);
+}
+
+/**
+ * For non-Anthropic VSCode profiles: strip claudeAiOauth from ~/.claude/.credentials.json
+ * so Claude Code doesn't use the subscription session instead of the configured API key.
+ * Backs up the original first. For Anthropic subscription profiles, restores from backup.
+ */
+function manageCredentialsForVscode(isApiKeyMode: boolean): void {
+  const claudeDir = join(getHomeDir(), '.claude');
+  const credPath = join(claudeDir, '.credentials.json');
+  const credBackupPath = join(claudeDir, '.credentials.json.flip-cc.vscode.bak');
+
+  if (!isApiKeyMode) {
+    // Restoring to subscription mode: restore backup if it exists
+    if (existsSync(credBackupPath)) {
+      const backup = readFileSync(credBackupPath, 'utf-8');
+      writeFileSync(credPath, backup, { mode: 0o600 });
+      rmSync(credBackupPath);
+      console.log(chalk.gray('  (restored credentials for Anthropic subscription mode)'));
+    }
+    return;
+  }
+
+  // API key mode: strip claudeAiOauth from credentials to prevent auth conflict
+  if (!existsSync(credPath)) {
+    mkdirSync(claudeDir, { recursive: true });
+    writeFileSync(credPath, '{}', { mode: 0o600 });
+    return;
+  }
+
+  let creds: Record<string, unknown>;
+  try {
+    creds = JSON.parse(readFileSync(credPath, 'utf-8')) as Record<string, unknown>;
+  } catch {
+    return; // can't parse, leave it alone
+  }
+
+  if (!('claudeAiOauth' in creds)) {
+    return; // already no oauth, nothing to do
+  }
+
+  // Back up the original credentials before modifying
+  writeFileSync(credBackupPath, JSON.stringify(creds, null, 2), { mode: 0o600 });
+
+  // Write stripped credentials (remove claude.ai oauth session)
+  const stripped = { ...creds };
+  delete stripped['claudeAiOauth'];
+  writeFileSync(credPath, JSON.stringify(stripped, null, 2), { mode: 0o600 });
+  console.log(chalk.gray('  (stripped claudeAiOauth from credentials to prevent auth conflict)'));
 }
 
 /**
@@ -251,6 +312,7 @@ export async function vscodeShimCommand(options: VscodeShimOptions): Promise<voi
       return;
     }
     removeSettings(settingsPath);
+    manageCredentialsForVscode(false); // restore credentials if backed up
     console.log(chalk.green('✓ Removed flip-cc VSCode configuration from:'), settingsPath);
     console.log(chalk.gray('  Restart VSCode for the change to take effect.'));
     return;
@@ -340,14 +402,8 @@ export async function vscodeShimCommand(options: VscodeShimOptions): Promise<voi
     process.exit(1);
   }
 
-  // Bootstrap ~/.claude/ on fresh systems so VSCode doesn't trigger onboarding
-  if (disableLogin) {
-    const realClaudeDir = join(getHomeDir(), '.claude');
-    if (!existsSync(realClaudeDir)) {
-      mkdirSync(realClaudeDir, { recursive: true });
-      writeFileSync(join(realClaudeDir, '.credentials.json'), '{}', { mode: 0o600 });
-    }
-  }
+  // Manage credentials.json to prevent auth conflicts with non-Anthropic providers
+  manageCredentialsForVscode(disableLogin);
 
   // Clean up any legacy PATH shim silently
   removeLegacyShim();
