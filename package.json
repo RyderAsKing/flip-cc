@@ -1,6 +1,6 @@
 {
   "name": "flip-cc",
-  "version": "0.8.1",
+  "version": "0.8.2",
   "type": "module",
   "bin": {
     "flip-cc": "dist/flip-cc"
